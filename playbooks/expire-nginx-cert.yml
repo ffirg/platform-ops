@@ -1,0 +1,51 @@
+---
+# playbooks/expire-nginx-cert.yml
+# Generate an expired certificate for testing
+
+- name: Create expired nginx certificate
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Install faketime if available
+      ansible.builtin.dnf:
+        name: libfaketime
+        state: present
+      ignore_errors: true
+
+    - name: Generate expired certificate using faketime
+      ansible.builtin.shell:
+        cmd: |
+          cd /etc/nginx/ssl
+          if command -v faketime >/dev/null 2>&1; then
+            # Use faketime to create cert that expired 5 days ago
+            faketime '-10 days' openssl req -x509 -nodes -days 5 \
+              -newkey rsa:2048 \
+              -keyout server.key \
+              -out server.crt \
+              -subj "/CN={{ ansible_fqdn }}/O=Test-Expired/C=GB"
+          else
+            # Alternative: create cert with 0 days validity (expires immediately)
+            openssl req -x509 -nodes -days 0 \
+              -newkey rsa:2048 \
+              -keyout server.key \
+              -out server.crt \
+              -subj "/CN={{ ansible_fqdn }}/O=Test-Expired/C=GB"
+          fi
+      register: cert_result
+
+    - name: Verify certificate is expired
+      ansible.builtin.shell:
+        cmd: |
+          openssl x509 -in /etc/nginx/ssl/server.crt -noout -dates
+          openssl x509 -in /etc/nginx/ssl/server.crt -checkend 0 && echo "VALID" || echo "EXPIRED"
+      register: verify_result
+
+    - name: Show certificate status
+      ansible.builtin.debug:
+        msg: "{{ verify_result.stdout_lines }}"
+
+    - name: Reload nginx to use new cert
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
