@@ -176,7 +176,7 @@
         _cert_source: >-
           {{
             'Self-Signed' if _is_self_signed else
-            'Let\'s Encrypt' if 'Let\'s Encrypt' in _issuer.stdout else
+            "Let's Encrypt" if "Let's Encrypt" in _issuer.stdout else
             'DigiCert' if 'DigiCert' in _issuer.stdout else
             'Sectigo' if 'Sectigo' in _issuer.stdout or 'COMODO' in _issuer.stdout else
             'GlobalSign' if 'GlobalSign' in _issuer.stdout else
