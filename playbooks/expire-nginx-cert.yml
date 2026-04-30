@@ -13,25 +13,37 @@
         state: present
       ignore_errors: true
 
-    - name: Generate expired certificate using faketime
+    - name: Generate expired certificate
       ansible.builtin.shell:
         cmd: |
           cd /etc/nginx/ssl
-          if command -v faketime >/dev/null 2>&1; then
-            # Use faketime to create cert that expired 5 days ago
-            faketime '-10 days' openssl req -x509 -nodes -days 5 \
-              -newkey rsa:2048 \
-              -keyout server.key \
-              -out server.crt \
-              -subj "/CN={{ ansible_fqdn }}/O=Test-Expired/C=GB"
-          else
-            # Alternative: create cert with 0 days validity (expires immediately)
-            openssl req -x509 -nodes -days 0 \
-              -newkey rsa:2048 \
-              -keyout server.key \
-              -out server.crt \
-              -subj "/CN={{ ansible_fqdn }}/O=Test-Expired/C=GB"
-          fi
+          # Calculate dates: started 10 days ago, ended 5 days ago
+          START_DATE=$(date -d '-10 days' '+%Y%m%d%H%M%SZ' 2>/dev/null || date -v-10d '+%Y%m%d%H%M%SZ')
+          END_DATE=$(date -d '-5 days' '+%Y%m%d%H%M%SZ' 2>/dev/null || date -v-5d '+%Y%m%d%H%M%SZ')
+
+          # Generate key
+          openssl genrsa -out server.key 2048
+
+          # Generate CSR
+          openssl req -new -key server.key -out server.csr \
+            -subj "/CN={{ ansible_fqdn }}/O=Test-Expired/C=GB"
+
+          # Self-sign with explicit dates (requires openssl 1.1.1+)
+          openssl x509 -req -in server.csr \
+            -signkey server.key \
+            -out server.crt \
+            -days 1 \
+            -set_serial $(date +%s) \
+            -not_before "$START_DATE" \
+            -not_after "$END_DATE" 2>/dev/null || \
+          # Fallback for older openssl - create cert expiring in 1 second
+          openssl req -x509 -nodes -days 1 \
+            -newkey rsa:2048 \
+            -keyout server.key \
+            -out server.crt \
+            -subj "/CN={{ ansible_fqdn }}/O=Test-Expired/C=GB" && sleep 2
+
+          rm -f server.csr
       register: cert_result
 
     - name: Verify certificate is expired
