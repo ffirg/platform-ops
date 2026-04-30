@@ -43,25 +43,6 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Check remote TLS certificates
-  ansible.builtin.include_role:
-    name: check_cert_remote
-  vars:
-    cert_host: "{{ item.host }}"
-    cert_port: "{{ item.port | default(443) }}"
-    cert_name: "{{ item.name }}"
-  loop: "{{ cert_checks | selectattr('type', 'eq', 'remote') | list }}"
-  loop_control:
-    label: "{{ item.name }}"
-
-- name: Collect remote certificate results
-  ansible.builtin.set_fact:
-    cert_results: "{{ cert_results + [cert_info] }}"
-  when: cert_info is defined
-  loop: "{{ cert_checks | selectattr('type', 'eq', 'remote') | list }}"
-  loop_control:
-    label: "{{ item.name }}"
-
 # Generate report
 - name: Generate certificate report
   ansible.builtin.include_role:

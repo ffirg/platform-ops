@@ -211,6 +211,54 @@
             'External CA'
           }}
 
+    # Service certificate verification - compare file cert with what service is serving
+    - name: Determine service port for verification
+      ansible.builtin.set_fact:
+        _service_port: >-
+          {{
+            443 if cert_service in ['nginx', 'httpd', 'apache'] else
+            636 if cert_service == 'ldap' else
+            993 if cert_service == 'dovecot' else
+            5432 if cert_service == 'postgresql' else
+            6379 if cert_service == 'redis' else
+            9090 if cert_service == 'cockpit' else
+            0
+          }}
+      when: cert_service is defined and cert_service != ''
+
+    - name: Get file certificate fingerprint
+      ansible.builtin.shell:
+        cmd: |
+          openssl x509 -in "{{ cert_path }}" -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//'
+      register: _file_fingerprint
+      changed_when: false
+      failed_when: false
+
+    - name: Get live service certificate fingerprint
+      ansible.builtin.shell:
+        cmd: |
+          timeout 5 openssl s_client -connect localhost:{{ _service_port }} </dev/null 2>/dev/null | \
+            openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//'
+      register: _live_fingerprint
+      changed_when: false
+      failed_when: false
+      when: _service_port is defined and _service_port | int > 0
+
+    - name: Compare file and live certificates
+      ansible.builtin.set_fact:
+        _service_match: "{{ _file_fingerprint.stdout == _live_fingerprint.stdout }}"
+        _service_verified: true
+      when:
+        - _live_fingerprint is defined
+        - _live_fingerprint.stdout is defined
+        - _live_fingerprint.stdout != ''
+
+    - name: Set service not verified (no port or connection failed)
+      ansible.builtin.set_fact:
+        _service_match: null
+        _service_verified: false
+      when: _service_match is not defined
+
     - name: Build cert_info fact
       ansible.builtin.set_fact:
         cert_info:
@@ -238,3 +286,6 @@
           purpose: "{{ _purpose.stdout | default('TLS Server') }}"
           service: "{{ cert_service | default(omit) }}"
           source: "{{ _cert_source }}"
+          service_verified: "{{ _service_verified | default(false) }}"
+          service_match: "{{ _service_match | default(None) }}"
+          service_port: "{{ _service_port | default(0) | int }}"

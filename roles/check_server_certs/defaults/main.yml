@@ -14,7 +14,6 @@ cert_checks: []
 # Auto-discovery settings
 cert_auto_discover: "{{ cert_checks | length == 0 }}"
 cert_discover_files: true
-cert_discover_remote: true
 
 # Thresholds
 cert_warning_days: 30

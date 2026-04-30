@@ -95,42 +95,6 @@
       loop: "{{ (_valid_certs.stdout_lines | default([])) | zip(_cert_services.results | default([])) | list }}"
       when: _valid_certs.stdout_lines is defined
 
-# Remote/listening port discovery
-- name: Discover TLS listening ports
-  when: cert_discover_remote | bool
-  block:
-    - name: Find listening TLS ports
-      ansible.builtin.shell: |
-        # Try ss first (modern)
-        if command -v ss >/dev/null 2>&1; then
-          ss -tlnp 2>/dev/null | grep -E ':443|:8443|:636|:993|:995|:5432|:6379' | \
-            awk '{print $4}' | sed 's/.*://' | sort -u
-        # Fall back to netstat
-        elif command -v netstat >/dev/null 2>&1; then
-          netstat -tlnp 2>/dev/null | grep -E ':443|:8443|:636|:993|:995|:5432|:6379' | \
-            awk '{print $4}' | sed 's/.*://' | sort -u
-        fi
-      register: _listening_ports
-      changed_when: false
-      failed_when: false
-
-    - name: Get hostname for remote checks
-      ansible.builtin.set_fact:
-        _local_hostname: "{{ ansible_fqdn | default(ansible_hostname) | default('localhost') }}"
-
-    - name: Build discovered remote certificates list
-      ansible.builtin.set_fact:
-        _discovered_certs: >-
-          {{
-            _discovered_certs + [{
-              'name': 'TLS:' + item,
-              'type': 'remote',
-              'host': _local_hostname,
-              'port': item | int
-            }]
-          }}
-      loop: "{{ _listening_ports.stdout_lines | default([]) }}"
-
 - name: Display discovered certificates
   ansible.builtin.debug:
     msg: "Discovered {{ _discovered_certs | length }} certificates to check"

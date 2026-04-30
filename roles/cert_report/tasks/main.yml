@@ -45,7 +45,7 @@
 
 - name: Display table header
   ansible.builtin.debug:
-    msg: "{{ '%-25s' | format('CERTIFICATE') }} {{ '%-10s' | format('STATUS') }} {{ '%-12s' | format('SOURCE') }} {{ '%6s' | format('DAYS') }}  {{ '%-15s' | format('KEY') }} {{ '%-25s' | format('ISSUER') }}"
+    msg: "{{ '%-25s' | format('CERTIFICATE') }} {{ '%-10s' | format('STATUS') }} {{ '%-12s' | format('SOURCE') }} {{ '%6s' | format('DAYS') }}  {{ '%-8s' | format('SERVICE') }} {{ '%-25s' | format('ISSUER') }}"
 
 - name: Display each certificate
   ansible.builtin.debug:
@@ -54,7 +54,7 @@
       {{ '%-10s' | format('[' + (item.status | default('unknown') | upper) + ']') }}
       {{ '%-12s' | format((item.source | default('Unknown') | string)[:12]) }}
       {{ '%6s' | format((item.days_remaining | default('N/A')) | string) }}
-      {{ '%-15s' | format(((item.key_algorithm | default('')) | string + ' ' + (item.key_size | default('')) | string)[:15]) }}
+      {{ '%-8s' | format('[MATCH]' if item.service_match | default(false) else '[SKIP]' if not item.service_verified | default(false) else '[DIFF!]') }}
       {{ ((item.issuer | default('N/A')) | string)[:25] }}
   loop: "{{ cert_report_sorted }}"
   loop_control:
