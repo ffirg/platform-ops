@@ -88,16 +88,46 @@
     - "SUMMARY: Total={{ cert_summary.total }} | OK={{ cert_summary.ok }} | Warning={{ cert_summary.warning }} | Critical={{ cert_summary.critical }} | Expired={{ cert_summary.expired }} | Missing={{ cert_summary.missing }}"
     - "───────────────────────────────────────────────────────────────────────────────────────"
 
-# Alerts
+# Alerts - make issues highly visible
+- name: Calculate if action is required
+  ansible.builtin.set_fact:
+    _action_required: "{{ (cert_summary.expired | int > 0) or (cert_summary.critical | int > 0) or (cert_summary.warning | int > 0) }}"
+
+- name: Display action required banner
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop:
+    - ""
+    - "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    - "                              ACTION REQUIRED"
+    - "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+  when: _action_required | bool
+
 - name: Display alerts
   ansible.builtin.debug:
     msg: "{{ item }}"
   loop:
-    - "{{ '*** EXPIRED: ' + cert_summary.expired | string + ' certificate(s) have EXPIRED! ***' if cert_summary.expired | int > 0 else '' }}"
-    - "{{ '*** CRITICAL: ' + cert_summary.critical | string + ' certificate(s) expire within ' + critical_days | string + ' days ***' if cert_summary.critical | int > 0 else '' }}"
-    - "{{ '*** WARNING: ' + cert_summary.warning | string + ' certificate(s) expire within ' + warn_days | string + ' days ***' if cert_summary.warning | int > 0 else '' }}"
-    - "{{ '*** ALL CERTIFICATES OK ***' if cert_summary.expired | int == 0 and cert_summary.critical | int == 0 and cert_summary.warning | int == 0 else '' }}"
+    - "{{ '>>> EXPIRED: ' + cert_summary.expired | string + ' certificate(s) have EXPIRED! <<<' if cert_summary.expired | int > 0 else '' }}"
+    - "{{ '>>> CRITICAL: ' + cert_summary.critical | string + ' certificate(s) expire within ' + critical_days | string + ' days <<<' if cert_summary.critical | int > 0 else '' }}"
+    - "{{ '>>> WARNING: ' + cert_summary.warning | string + ' certificate(s) expire within ' + warn_days | string + ' days <<<' if cert_summary.warning | int > 0 else '' }}"
   when: item != ''
+
+- name: Display action required footer
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop:
+    - "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    - ""
+  when: _action_required | bool
+
+- name: Display all OK message
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop:
+    - ""
+    - "All certificates OK - no action required"
+    - ""
+  when: not _action_required | bool
 
 # JSON output for API/portal integration
 - name: Build JSON report
