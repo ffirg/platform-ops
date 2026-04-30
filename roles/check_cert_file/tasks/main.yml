@@ -37,10 +37,10 @@
       community.crypto.x509_certificate_info:
         path: "{{ cert_path }}"
       register: _cert_info
-      failed_when: false
+      ignore_errors: true
 
     - name: Handle certificate read error
-      when: _cert_info.failed | default(false)
+      when: _cert_info is failed
       ansible.builtin.set_fact:
         cert_info:
           name: "{{ cert_name | default(cert_path | basename) }}"
@@ -63,17 +63,17 @@
           source: null
 
     - name: Process valid certificate
-      when: not (_cert_info.failed | default(false))
+      when: _cert_info is not failed
       block:
         - name: Calculate days remaining
           ansible.builtin.set_fact:
-            _days_remaining: "{{ ((_cert_info.not_after | to_datetime('%Y%m%d%H%M%SZ')) - (ansible_date_time.iso8601 | to_datetime('%Y-%m-%dT%H:%M:%SZ'))).days }}"
+            _days_remaining: "{{ ((_cert_info.not_after | to_datetime('%Y%m%d%H%M%SZ')).date() - (now(utc=true).date())).days }}"
 
         - name: Determine certificate status
           ansible.builtin.set_fact:
             _cert_status: >-
               {{
-                'expired' if (_days_remaining | int) < 0 else
+                'expired' if _cert_info.expired else
                 'critical' if (_days_remaining | int) <= (cert_critical_days | int) else
                 'warning' if (_days_remaining | int) <= (cert_warning_days | int) else
                 'ok'
@@ -81,13 +81,11 @@
 
         - name: Format subject string
           ansible.builtin.set_fact:
-            _subject_str: >-
-              {{ _cert_info.subject | dict2items | map(attribute='value') | map('join', '=') | join(', ') if _cert_info.subject is mapping else _cert_info.subject | default('') }}
+            _subject_str: "{{ _cert_info.subject.commonName | default('') }}{% if _cert_info.subject.organizationName is defined %}, O={{ _cert_info.subject.organizationName }}{% endif %}{% if _cert_info.subject.countryName is defined %}, C={{ _cert_info.subject.countryName }}{% endif %}"
 
         - name: Format issuer string
           ansible.builtin.set_fact:
-            _issuer_str: >-
-              {{ _cert_info.issuer | dict2items | map(attribute='value') | map('join', '=') | join(', ') if _cert_info.issuer is mapping else _cert_info.issuer | default('') }}
+            _issuer_str: "{{ _cert_info.issuer.commonName | default('') }}{% if _cert_info.issuer.organizationName is defined %}, O={{ _cert_info.issuer.organizationName }}{% endif %}"
 
         - name: Check if self-signed
           ansible.builtin.set_fact:
@@ -124,7 +122,7 @@
             host: localhost
             port: "{{ _service_port | int }}"
           register: _live_cert
-          failed_when: false
+          ignore_errors: true
           when: _service_port is defined and _service_port | int > 0
 
         - name: Compare file and live certificates
@@ -133,6 +131,7 @@
             _service_verified: true
           when:
             - _live_cert is defined
+            - _live_cert is not failed
             - _live_cert.fingerprints is defined
 
         - name: Set service not verified
@@ -168,7 +167,7 @@
                   - depth: 0
                     subject: "{{ _subject_str | trim }}"
                     issuer: "{{ _issuer_str | trim }}"
-              purpose: "{{ 'TLS Server' if 'TLS Web Server Authentication' in (_cert_info.extended_key_usage | default([])) else 'TLS Client' if 'TLS Web Client Authentication' in (_cert_info.extended_key_usage | default([])) else 'General' }}"
+              purpose: "{{ 'TLS Server' if 'serverAuth' in (_cert_info.extended_key_usage | default([]) | join(',')) else 'TLS Client' if 'clientAuth' in (_cert_info.extended_key_usage | default([]) | join(',')) else 'General' }}"
               service: "{{ cert_service | default(omit) }}"
               source: "{{ _cert_source }}"
               service_verified: "{{ _service_verified | default(false) }}"
