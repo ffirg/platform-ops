@@ -1,6 +1,6 @@
 ---
 # roles/check_cert_file/tasks/main.yml
-# Check a single certificate file and extract all metadata
+# Check a single certificate file using community.crypto modules
 
 - name: Check if certificate file exists
   ansible.builtin.stat:
@@ -33,259 +33,144 @@
 - name: Extract certificate information
   when: _cert_stat.stat.exists
   block:
-    - name: Get certificate text output
-      ansible.builtin.shell: |
-        openssl x509 -in "{{ cert_path }}" -noout -text 2>/dev/null
-      register: _cert_text
-      changed_when: false
+    - name: Get certificate info using community.crypto
+      community.crypto.x509_certificate_info:
+        path: "{{ cert_path }}"
+      register: _cert_info
       failed_when: false
 
-    - name: Get certificate dates
-      ansible.builtin.shell: |
-        openssl x509 -in "{{ cert_path }}" -noout -enddate -startdate 2>/dev/null
-      register: _cert_dates
-      changed_when: false
-      failed_when: false
-
-    - name: Calculate days remaining
-      ansible.builtin.shell: |
-        expiry_date=$(openssl x509 -in "{{ cert_path }}" -noout -enddate 2>/dev/null | sed 's/notAfter=//')
-        # Handle both GNU date and BSD date
-        if date --version >/dev/null 2>&1; then
-          expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null)
-        else
-          expiry_epoch=$(date -jf "%b %d %T %Y %Z" "$expiry_date" +%s 2>/dev/null)
-        fi
-        now_epoch=$(date +%s)
-        echo $(( (expiry_epoch - now_epoch) / 86400 ))
-      register: _days_remaining
-      changed_when: false
-      failed_when: false
-
-    - name: Get expiry date formatted
-      ansible.builtin.shell: |
-        openssl x509 -in "{{ cert_path }}" -noout -enddate 2>/dev/null | sed 's/notAfter=//'
-      register: _expiry_date
-      changed_when: false
-      failed_when: false
-
-    - name: Get subject
-      ansible.builtin.shell: |
-        openssl x509 -in "{{ cert_path }}" -noout -subject 2>/dev/null | sed 's/subject=//'
-      register: _subject
-      changed_when: false
-      failed_when: false
-
-    - name: Get issuer
-      ansible.builtin.shell: |
-        openssl x509 -in "{{ cert_path }}" -noout -issuer 2>/dev/null | sed 's/issuer=//'
-      register: _issuer
-      changed_when: false
-      failed_when: false
-
-    - name: Get serial number
-      ansible.builtin.shell: |
-        openssl x509 -in "{{ cert_path }}" -noout -serial 2>/dev/null | sed 's/serial=//'
-      register: _serial
-      changed_when: false
-      failed_when: false
-
-    - name: Get signature algorithm
-      ansible.builtin.shell: |
-        openssl x509 -in "{{ cert_path }}" -noout -text 2>/dev/null | grep -m1 "Signature Algorithm:" | sed 's/.*Signature Algorithm: //'
-      register: _sig_alg
-      changed_when: false
-      failed_when: false
-
-    - name: Get public key info
-      ansible.builtin.shell: |
-        key_info=$(openssl x509 -in "{{ cert_path }}" -noout -text 2>/dev/null)
-        key_alg=$(echo "$key_info" | grep "Public Key Algorithm:" | sed 's/.*Public Key Algorithm: //')
-        key_size=$(echo "$key_info" | grep "Public-Key:" | sed 's/.*(\([0-9]*\) bit).*/\1/')
-        if [ -z "$key_size" ]; then
-          key_size=$(echo "$key_info" | grep "ASN1 OID:" | sed 's/.*ASN1 OID: //')
-        fi
-        echo "${key_alg}|${key_size}"
-      register: _key_info
-      changed_when: false
-      failed_when: false
-
-    - name: Get Subject Alternative Names
-      ansible.builtin.shell: |
-        openssl x509 -in "{{ cert_path }}" -noout -ext subjectAltName 2>/dev/null | \
-          grep -v "Subject Alternative Name:" | \
-          tr ',' '\n' | \
-          sed 's/^ *//' | \
-          grep -v "^$"
-      register: _san
-      changed_when: false
-      failed_when: false
-
-    - name: Get certificate purpose/key usage
-      ansible.builtin.shell: |
-        openssl x509 -in "{{ cert_path }}" -noout -purpose 2>/dev/null | \
-          grep -E "^(SSL client|SSL server|S/MIME|Object Signing|TSA)" | \
-          grep ": Yes" | \
-          sed 's/ : Yes//' | \
-          head -1
-      register: _purpose
-      changed_when: false
-      failed_when: false
-
-    - name: Check if self-signed
-      ansible.builtin.shell: |
-        subject=$(openssl x509 -in "{{ cert_path }}" -noout -subject 2>/dev/null | sed 's/subject=//')
-        issuer=$(openssl x509 -in "{{ cert_path }}" -noout -issuer 2>/dev/null | sed 's/issuer=//')
-        if [ "$subject" = "$issuer" ]; then
-          echo "true"
-        else
-          echo "false"
-        fi
-      register: _is_self_signed
-      changed_when: false
-      failed_when: false
-
-    - name: Extract certificate chain (if bundle)
-      ansible.builtin.shell:
-        cmd: |
-          cert_file="{{ cert_path }}"
-          cert_count=$(grep -c "BEGIN CERTIFICATE" "$cert_file" 2>/dev/null || echo "1")
-          echo "cert_count:${cert_count}"
-
-          if [ "$cert_count" -gt 1 ]; then
-            awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' "$cert_file" | \
-            csplit -s -f /tmp/cert_chain_ - '/BEGIN CERTIFICATE/' '{*}' 2>/dev/null || true
-
-            depth=0
-            for cf in /tmp/cert_chain_*; do
-              if [ -s "$cf" ] && grep -q "BEGIN CERTIFICATE" "$cf" 2>/dev/null; then
-                subj=$(openssl x509 -in "$cf" -noout -subject 2>/dev/null | sed 's/subject=//')
-                iss=$(openssl x509 -in "$cf" -noout -issuer 2>/dev/null | sed 's/issuer=//')
-                echo "depth:${depth}|subject:${subj}|issuer:${iss}"
-                depth=$((depth + 1))
-              fi
-              rm -f "$cf" 2>/dev/null
-            done
-          else
-            subj=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/subject=//')
-            iss=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/issuer=//')
-            echo "depth:0|subject:${subj}|issuer:${iss}"
-          fi
-      register: _chain_info
-      changed_when: false
-      failed_when: false
-
-    - name: Parse chain information
-      ansible.builtin.set_fact:
-        _parsed_chain:
-          depth: "{{ (_chain_info.stdout_lines | select('match', '^cert_count:') | first | default('cert_count:1')).split(':')[1] | int }}"
-          chain_certs: >-
-            {{
-              _chain_info.stdout_lines |
-              select('match', '^depth:') |
-              map('regex_replace', '^depth:(\d+)\|subject:(.*)\|issuer:(.*)', '{"depth": \1, "subject": "\2", "issuer": "\3"}') |
-              map('from_json') |
-              list
-            }}
-
-    - name: Determine certificate status
-      ansible.builtin.set_fact:
-        _cert_status: >-
-          {{
-            'error' if _cert_text.rc != 0 else
-            'expired' if (_days_remaining.stdout | int) < 0 else
-            'critical' if (_days_remaining.stdout | int) <= (cert_critical_days | int) else
-            'warning' if (_days_remaining.stdout | int) <= (cert_warning_days | int) else
-            'ok'
-          }}
-
-    - name: Determine certificate source
-      ansible.builtin.set_fact:
-        _cert_source: >-
-          {{
-            'Self-Signed' if _is_self_signed.stdout == 'true' else
-            "Let's Encrypt" if "Let's Encrypt" in _issuer.stdout else
-            'DigiCert' if 'DigiCert' in _issuer.stdout else
-            'Sectigo' if 'Sectigo' in _issuer.stdout or 'COMODO' in _issuer.stdout else
-            'GlobalSign' if 'GlobalSign' in _issuer.stdout else
-            'External CA'
-          }}
-
-    # Service certificate verification - compare file cert with what service is serving
-    - name: Determine service port for verification
-      ansible.builtin.set_fact:
-        _service_port: >-
-          {{
-            443 if cert_service in ['nginx', 'httpd', 'apache'] else
-            636 if cert_service == 'ldap' else
-            993 if cert_service == 'dovecot' else
-            5432 if cert_service == 'postgresql' else
-            6379 if cert_service == 'redis' else
-            9090 if cert_service == 'cockpit' else
-            0
-          }}
-      when: cert_service is defined and cert_service != ''
-
-    - name: Get file certificate fingerprint
-      ansible.builtin.shell:
-        cmd: |
-          openssl x509 -in "{{ cert_path }}" -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//'
-      register: _file_fingerprint
-      changed_when: false
-      failed_when: false
-
-    - name: Get live service certificate fingerprint
-      ansible.builtin.shell:
-        cmd: |
-          timeout 5 openssl s_client -connect localhost:{{ _service_port }} </dev/null 2>/dev/null | \
-            openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//'
-      register: _live_fingerprint
-      changed_when: false
-      failed_when: false
-      when: _service_port is defined and _service_port | int > 0
-
-    - name: Compare file and live certificates
-      ansible.builtin.set_fact:
-        _service_match: "{{ _file_fingerprint.stdout == _live_fingerprint.stdout }}"
-        _service_verified: true
-      when:
-        - _live_fingerprint is defined
-        - _live_fingerprint.stdout is defined
-        - _live_fingerprint.stdout != ''
-
-    - name: Set service not verified (no port or connection failed)
-      ansible.builtin.set_fact:
-        _service_match: null
-        _service_verified: false
-      when: _service_match is not defined
-
-    - name: Build cert_info fact
+    - name: Handle certificate read error
+      when: _cert_info.failed | default(false)
       ansible.builtin.set_fact:
         cert_info:
           name: "{{ cert_name | default(cert_path | basename) }}"
           path: "{{ cert_path }}"
           type: "file"
           exists: true
-          status: "{{ _cert_status }}"
-          days_remaining: "{{ _days_remaining.stdout | int }}"
-          expiry_date: "{{ _expiry_date.stdout }}"
-          subject: "{{ _subject.stdout }}"
-          issuer: "{{ _issuer.stdout }}"
-          serial: "{{ _serial.stdout }}"
-          key_algorithm: "{{ _key_info.stdout.split('|')[0] | default('unknown') }}"
-          key_size: "{{ _key_info.stdout.split('|')[1] | default('unknown') }}"
-          sig_algorithm: "{{ _sig_alg.stdout | default('unknown') }}"
-          san: "{{ _san.stdout_lines | default([]) }}"
-          chain:
-            depth: "{{ _parsed_chain.depth }}"
-            is_self_signed: "{{ _is_self_signed.stdout == 'true' }}"
-            chain_valid: true
-            root_ca: "{{ (_parsed_chain.chain_certs | last).subject if _parsed_chain.chain_certs | length > 0 else _issuer.stdout }}"
-            intermediates: "{{ _parsed_chain.chain_certs[1:-1] | map(attribute='subject') | list if _parsed_chain.chain_certs | length > 2 else [] }}"
-            chain_certs: "{{ _parsed_chain.chain_certs }}"
-          purpose: "{{ _purpose.stdout | default('TLS Server') }}"
+          status: "error"
+          days_remaining: null
+          expiry_date: null
+          subject: null
+          issuer: null
+          serial: null
+          key_algorithm: null
+          key_size: null
+          sig_algorithm: null
+          san: []
+          chain: null
+          purpose: null
           service: "{{ cert_service | default(omit) }}"
-          source: "{{ _cert_source }}"
-          service_verified: "{{ _service_verified | default(false) }}"
-          service_match: "{{ _service_match | default(None) }}"
-          service_port: "{{ _service_port | default(0) | int }}"
+          source: null
+
+    - name: Process valid certificate
+      when: not (_cert_info.failed | default(false))
+      block:
+        - name: Calculate days remaining
+          ansible.builtin.set_fact:
+            _days_remaining: "{{ ((_cert_info.not_after | to_datetime('%Y%m%d%H%M%SZ')) - (ansible_date_time.iso8601 | to_datetime('%Y-%m-%dT%H:%M:%SZ'))).days }}"
+
+        - name: Determine certificate status
+          ansible.builtin.set_fact:
+            _cert_status: >-
+              {{
+                'expired' if (_days_remaining | int) < 0 else
+                'critical' if (_days_remaining | int) <= (cert_critical_days | int) else
+                'warning' if (_days_remaining | int) <= (cert_warning_days | int) else
+                'ok'
+              }}
+
+        - name: Format subject string
+          ansible.builtin.set_fact:
+            _subject_str: >-
+              {{ _cert_info.subject | dict2items | map(attribute='value') | map('join', '=') | join(', ') if _cert_info.subject is mapping else _cert_info.subject | default('') }}
+
+        - name: Format issuer string
+          ansible.builtin.set_fact:
+            _issuer_str: >-
+              {{ _cert_info.issuer | dict2items | map(attribute='value') | map('join', '=') | join(', ') if _cert_info.issuer is mapping else _cert_info.issuer | default('') }}
+
+        - name: Check if self-signed
+          ansible.builtin.set_fact:
+            _is_self_signed: "{{ _cert_info.subject == _cert_info.issuer }}"
+
+        - name: Determine certificate source
+          ansible.builtin.set_fact:
+            _cert_source: >-
+              {{
+                'Self-Signed' if _is_self_signed else
+                "Let's Encrypt" if "Let's Encrypt" in (_issuer_str | string) else
+                'DigiCert' if 'DigiCert' in (_issuer_str | string) else
+                'Sectigo' if 'Sectigo' in (_issuer_str | string) or 'COMODO' in (_issuer_str | string) else
+                'GlobalSign' if 'GlobalSign' in (_issuer_str | string) else
+                'External CA'
+              }}
+
+        - name: Determine service port for verification
+          ansible.builtin.set_fact:
+            _service_port: >-
+              {{
+                443 if cert_service in ['nginx', 'httpd', 'apache'] else
+                636 if cert_service == 'ldap' else
+                993 if cert_service == 'dovecot' else
+                5432 if cert_service == 'postgresql' else
+                6379 if cert_service == 'redis' else
+                9090 if cert_service == 'cockpit' else
+                0
+              }}
+          when: cert_service is defined and cert_service != ''
+
+        - name: Get live service certificate for comparison
+          community.crypto.get_certificate:
+            host: localhost
+            port: "{{ _service_port | int }}"
+          register: _live_cert
+          failed_when: false
+          when: _service_port is defined and _service_port | int > 0
+
+        - name: Compare file and live certificates
+          ansible.builtin.set_fact:
+            _service_match: "{{ _cert_info.fingerprints.sha256 == _live_cert.fingerprints.sha256 }}"
+            _service_verified: true
+          when:
+            - _live_cert is defined
+            - _live_cert.fingerprints is defined
+
+        - name: Set service not verified
+          ansible.builtin.set_fact:
+            _service_match: null
+            _service_verified: false
+          when: _service_match is not defined
+
+        - name: Build cert_info fact
+          ansible.builtin.set_fact:
+            cert_info:
+              name: "{{ cert_name | default(cert_path | basename) }}"
+              path: "{{ cert_path }}"
+              type: "file"
+              exists: true
+              status: "{{ _cert_status }}"
+              days_remaining: "{{ _days_remaining | int }}"
+              expiry_date: "{{ _cert_info.not_after }}"
+              subject: "{{ _subject_str | trim }}"
+              issuer: "{{ _issuer_str | trim }}"
+              serial: "{{ _cert_info.serial_number }}"
+              key_algorithm: "{{ _cert_info.public_key_type }}"
+              key_size: "{{ _cert_info.public_key_data.size | default(_cert_info.public_key_data.curve | default('unknown')) }}"
+              sig_algorithm: "{{ _cert_info.signature_algorithm }}"
+              san: "{{ _cert_info.subject_alt_name | default([]) }}"
+              chain:
+                depth: "1"
+                is_self_signed: "{{ _is_self_signed }}"
+                chain_valid: true
+                root_ca: "{{ _issuer_str | trim }}"
+                intermediates: []
+                chain_certs:
+                  - depth: 0
+                    subject: "{{ _subject_str | trim }}"
+                    issuer: "{{ _issuer_str | trim }}"
+              purpose: "{{ 'TLS Server' if 'TLS Web Server Authentication' in (_cert_info.extended_key_usage | default([])) else 'TLS Client' if 'TLS Web Client Authentication' in (_cert_info.extended_key_usage | default([])) else 'General' }}"
+              service: "{{ cert_service | default(omit) }}"
+              source: "{{ _cert_source }}"
+              service_verified: "{{ _service_verified | default(false) }}"
+              service_match: "{{ _service_match | default(None) }}"
+              service_port: "{{ _service_port | default(0) | int }}"
