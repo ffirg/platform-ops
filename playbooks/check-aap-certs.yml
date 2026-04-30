@@ -48,4 +48,4 @@
     aap_namespace: "aap"
 
   roles:
-    - role: check_aap_certs
+    - role: ../roles/check_aap_certs

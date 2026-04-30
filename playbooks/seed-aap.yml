@@ -1,0 +1,93 @@
+---
+# playbooks/seed-aap.yml
+# Seed AAP with the platform-ops project and job templates
+#
+# Usage:
+#   ansible-playbook playbooks/seed-aap.yml -e "aap_hostname=carmaap1.lan"
+
+- name: Seed AAP with Platform-Ops Project and Job Templates
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # AAP Connection (both naming conventions for compatibility)
+    aap_hostname: "https://{{ lookup('env', 'CONTROLLER_HOST') | default('carmaap1.lan', true) }}"
+    aap_username: "{{ lookup('env', 'CONTROLLER_USERNAME') | | mandatory }}"
+    aap_password: "{{ lookup('env', 'CONTROLLER_PASSWORD') | | mandatory }}"
+    aap_validate_certs: false
+    controller_host: "{{ aap_hostname }}"
+    controller_username: "{{ aap_username }}"
+    controller_password: "{{ aap_password }}"
+    controller_validate_certs: false
+
+    # Organization
+    controller_organizations:
+      - name: "Default"
+
+    # Project
+    controller_projects:
+      - name: "Platform Ops"
+        organization: "Default"
+        scm_type: git
+        scm_url: "https://github.com/ffirg/platform-ops.git"
+        scm_branch: "main"
+        scm_update_on_launch: true
+        update_project: true
+        wait: false
+
+    # Inventory
+    controller_inventories:
+      - name: "Platform Ops - Localhost"
+        organization: "Default"
+
+    # Hosts
+    controller_hosts:
+      - name: "localhost"
+        inventory: "Platform Ops - Localhost"
+        variables:
+          ansible_connection: local
+
+    # Job Templates
+    controller_templates:
+      - name: "Check Server Certificates"
+        organization: "Default"
+        project: "Platform Ops"
+        playbook: "playbooks/check-certs.yml"
+        inventory: "Platform Ops - Localhost"
+        ask_variables_on_launch: true
+        extra_vars:
+          cert_checks: []
+
+      - name: "Check AAP Certificates"
+        organization: "Default"
+        project: "Platform Ops"
+        playbook: "playbooks/check-aap-certs.yml"
+        inventory: "Platform Ops - Localhost"
+        ask_variables_on_launch: true
+
+  roles:
+    - infra.aap_configuration.controller_organizations
+    - infra.aap_configuration.controller_projects
+    - infra.aap_configuration.controller_inventories
+    - infra.aap_configuration.controller_hosts
+    - infra.aap_configuration.controller_job_templates
+
+  post_tasks:
+    - name: Display results
+      ansible.builtin.debug:
+        msg: |
+          Platform Ops seeding complete!
+
+          Created:
+            - Project: Platform Ops
+            - Inventory: Platform Ops - Localhost
+            - Job Template: Check Server Certificates
+            - Job Template: Check AAP Certificates
+
+          To test remote TLS checks, launch "Check Server Certificates" with:
+            cert_checks:
+              - name: "GitHub"
+                type: remote
+                host: github.com
+                port: 443

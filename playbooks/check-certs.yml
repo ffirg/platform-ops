@@ -35,4 +35,4 @@
     cert_checks: []
 
   roles:
-    - role: check_server_certs
+    - role: ../roles/check_server_certs
