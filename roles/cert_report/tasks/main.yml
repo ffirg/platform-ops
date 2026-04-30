@@ -174,24 +174,22 @@
     msg: "Reports saved to: {{ report_file }} and {{ report_file | regex_replace('\\.md$', '.json') }}"
   when: report_file | length > 0
 
-# Fail conditions
-- name: Fail if certificates are expired
-  ansible.builtin.fail:
-    msg: "{{ cert_summary.expired }} certificate(s) have expired!"
-  when:
-    - cert_fail_on_expired | default(true) | bool
-    - cert_summary.expired | int > 0
+# Show failed task (red) for issues but don't fail the playbook
+- name: Certificate health check
+  block:
+    - name: "FAILED: {{ cert_summary.expired }} certificate(s) EXPIRED"
+      ansible.builtin.fail:
+        msg: |
+          CERTIFICATE CHECK FAILED
+          -------------------------
+          Expired: {{ cert_summary.expired }}
+          Critical: {{ cert_summary.critical }}
+          Warning: {{ cert_summary.warning }}
+          -------------------------
+          Review the report above for details.
+      when: _action_required | bool
 
-- name: Fail if certificates are critical
-  ansible.builtin.fail:
-    msg: "{{ cert_summary.critical }} certificate(s) expire within {{ critical_days }} days!"
-  when:
-    - cert_fail_on_critical | default(false) | bool
-    - cert_summary.critical | int > 0
-
-- name: Fail if certificates have warnings
-  ansible.builtin.fail:
-    msg: "{{ cert_summary.warning }} certificate(s) expire within {{ warn_days }} days!"
-  when:
-    - cert_fail_on_warning | default(false) | bool
-    - cert_summary.warning | int > 0
+  rescue:
+    - name: Certificate issues detected (see report above)
+      ansible.builtin.debug:
+        msg: "Certificate check completed with issues - action required"
