@@ -2,9 +2,9 @@
 # roles/check_aap_certs/tasks/main.yml
 # AAP-specific certificate checking - discovers and checks AAP components
 
-- name: Initialize certificate report
+- name: Initialize certificate results
   ansible.builtin.set_fact:
-    cert_report: []
+    cert_results: []
     cert_checks: []
 
 # Platform auto-detection
@@ -87,7 +87,7 @@
 
 - name: Collect certificate results
   ansible.builtin.set_fact:
-    cert_report: "{{ cert_report + [cert_info] }}"
+    cert_results: "{{ cert_results + [cert_info] }}"
   loop: "{{ cert_checks }}"
   loop_control:
     label: "{{ item.name }}"
@@ -112,11 +112,11 @@
   failed_when: false
   when: aap_platform == 'containerized'
 
-- name: Add CA source context to report
+- name: Add CA source context to results
   ansible.builtin.set_fact:
-    cert_report: >-
+    cert_results: >-
       {{
-        cert_report | map('combine', {
+        cert_results | map('combine', {
           'aap_ca_source': _ca_source.stdout | default('unknown'),
           'platform': aap_platform
         }) | list
@@ -128,11 +128,11 @@
   ansible.builtin.include_role:
     name: cert_report
   vars:
-    cert_report: "{{ cert_report }}"
+    cert_report: "{{ cert_results }}"
     warn_days: "{{ cert_warning_days }}"
     critical_days: "{{ cert_critical_days }}"
     report_file: "{{ cert_report_file }}"
     show_paths: "{{ cert_show_paths }}"
     show_chain: "{{ cert_show_chain }}"
     output_json: "{{ cert_output_json }}"
-  when: cert_report | length > 0
+  when: cert_results | length > 0

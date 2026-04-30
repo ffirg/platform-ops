@@ -9,9 +9,9 @@
     public: true
   ignore_errors: true
 
-- name: Initialize certificate report
+- name: Initialize certificate results
   ansible.builtin.set_fact:
-    cert_report: []
+    cert_results: []
 
 # Auto-discovery if no explicit checks provided
 - name: Run certificate auto-discovery
@@ -37,7 +37,7 @@
 
 - name: Collect file certificate results
   ansible.builtin.set_fact:
-    cert_report: "{{ cert_report + [cert_info] }}"
+    cert_results: "{{ cert_results + [cert_info] }}"
   when: cert_info is defined
   loop: "{{ cert_checks | selectattr('type', 'eq', 'file') | list }}"
   loop_control:
@@ -56,7 +56,7 @@
 
 - name: Collect remote certificate results
   ansible.builtin.set_fact:
-    cert_report: "{{ cert_report + [cert_info] }}"
+    cert_results: "{{ cert_results + [cert_info] }}"
   when: cert_info is defined
   loop: "{{ cert_checks | selectattr('type', 'eq', 'remote') | list }}"
   loop_control:
@@ -67,11 +67,11 @@
   ansible.builtin.include_role:
     name: cert_report
   vars:
-    cert_report: "{{ cert_report }}"
+    cert_report: "{{ cert_results }}"
     warn_days: "{{ cert_warning_days }}"
     critical_days: "{{ cert_critical_days }}"
     report_file: "{{ cert_report_file }}"
     show_paths: "{{ cert_show_paths }}"
     show_chain: "{{ cert_show_chain }}"
     output_json: "{{ cert_output_json }}"
-  when: cert_report | length > 0
+  when: cert_results | length > 0
