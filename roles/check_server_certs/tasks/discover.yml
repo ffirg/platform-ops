@@ -32,20 +32,26 @@
 
     - name: Filter to actual certificate files (not CA bundles)
       ansible.builtin.shell: |
-        for cert in {{ _found_certs.stdout_lines | join(' ') }}; do
-          # Skip CA bundle files
-          if echo "$cert" | grep -qE "(ca-bundle|ca-certificates|trusted)"; then
-            continue
-          fi
-          # Check if it's a valid certificate (not just a key or CSR)
-          if openssl x509 -in "$cert" -noout 2>/dev/null; then
-            echo "$cert"
-          fi
-        done
-      register: _valid_certs
+        cert="{{ item }}"
+        # Skip CA bundle files
+        if echo "$cert" | grep -qE "(ca-bundle|ca-certificates|trusted)"; then
+          exit 0
+        fi
+        # Check if it's a valid certificate (not just a key or CSR)
+        if openssl x509 -in "$cert" -noout 2>/dev/null; then
+          echo "$cert"
+        fi
+      loop: "{{ _found_certs.stdout_lines | default([]) }}"
+      register: _valid_certs_raw
       changed_when: false
       failed_when: false
       when: _found_certs.stdout_lines | length > 0
+
+    - name: Collect valid certificate paths
+      ansible.builtin.set_fact:
+        _valid_certs:
+          stdout_lines: "{{ _valid_certs_raw.results | selectattr('stdout', 'defined') | map(attribute='stdout') | select | list }}"
+      when: _valid_certs_raw is defined
 
     - name: Try to associate certificates with services
       ansible.builtin.shell: |
