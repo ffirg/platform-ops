@@ -1,0 +1,84 @@
+---
+# playbooks/setup-test-certs.yml
+# Install nginx with self-signed cert and cockpit for certificate testing
+
+- name: Setup test certificates
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Install nginx and cockpit
+      ansible.builtin.dnf:
+        name:
+          - nginx
+          - cockpit
+          - cockpit-ws
+        state: present
+
+    - name: Create nginx SSL directory
+      ansible.builtin.file:
+        path: /etc/nginx/ssl
+        state: directory
+        mode: '0755'
+
+    - name: Generate self-signed certificate for nginx
+      ansible.builtin.command:
+        cmd: >
+          openssl req -x509 -nodes -days 365
+          -newkey rsa:2048
+          -keyout /etc/nginx/ssl/server.key
+          -out /etc/nginx/ssl/server.crt
+          -subj "/CN={{ ansible_fqdn }}/O=Test/C=GB"
+        creates: /etc/nginx/ssl/server.crt
+
+    - name: Configure nginx for HTTPS
+      ansible.builtin.copy:
+        dest: /etc/nginx/conf.d/ssl.conf
+        mode: '0644'
+        content: |
+          server {
+              listen 443 ssl;
+              server_name {{ ansible_fqdn }};
+
+              ssl_certificate /etc/nginx/ssl/server.crt;
+              ssl_certificate_key /etc/nginx/ssl/server.key;
+
+              location / {
+                  root /usr/share/nginx/html;
+                  index index.html;
+              }
+          }
+
+    - name: Start and enable nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Start and enable cockpit
+      ansible.builtin.systemd:
+        name: cockpit.socket
+        state: started
+        enabled: true
+
+    - name: Open firewall for nginx HTTPS
+      ansible.posix.firewalld:
+        service: https
+        permanent: true
+        state: enabled
+        immediate: true
+      ignore_errors: true
+
+    - name: Open firewall for cockpit
+      ansible.posix.firewalld:
+        service: cockpit
+        permanent: true
+        state: enabled
+        immediate: true
+      ignore_errors: true
+
+    - name: Display certificate locations
+      ansible.builtin.debug:
+        msg:
+          - "Nginx cert: /etc/nginx/ssl/server.crt"
+          - "Cockpit cert: /etc/cockpit/ws-certs.d/*.cert (auto-generated)"
