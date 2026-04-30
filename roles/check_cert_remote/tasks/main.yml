@@ -1,20 +1,19 @@
 ---
 # roles/check_cert_remote/tasks/main.yml
-# Check a certificate via TLS handshake using community.crypto
+# Check a certificate via TLS handshake (remote endpoints)
 
 - name: Set SNI hostname
   ansible.builtin.set_fact:
     _sni_host: "{{ cert_servername | default(cert_host) }}"
 
-- name: Get certificate from remote endpoint
-  community.crypto.get_certificate:
-    host: "{{ cert_host }}"
-    port: "{{ cert_port | int }}"
-    server_hostname: "{{ _sni_host }}"
-    timeout: "{{ cert_timeout | default(10) }}"
+- name: Connect and retrieve certificate
+  ansible.builtin.shell: |
+    timeout {{ cert_timeout }} openssl s_client -connect "{{ cert_host }}:{{ cert_port }}" \
+      -servername "{{ _sni_host }}" </dev/null 2>/dev/null | \
+      openssl x509 -outform PEM 2>/dev/null
   register: _remote_cert
-  ignore_errors: true
-  delegate_to: localhost
+  changed_when: false
+  failed_when: false
 
 - name: Initialize cert_info for unreachable endpoint
   ansible.builtin.set_fact:
@@ -25,7 +24,7 @@
       type: "remote"
       exists: false
       status: "error"
-      error: "{{ _remote_cert.msg | default('Unable to connect or retrieve certificate') }}"
+      error: "Unable to connect or retrieve certificate"
       days_remaining: null
       expiry_date: null
       subject: null
@@ -39,48 +38,150 @@
       purpose: null
       service: null
       source: null
-  when: _remote_cert is failed
+  when: _remote_cert.rc != 0 or _remote_cert.stdout == ""
 
 - name: Extract certificate information from remote endpoint
-  when: _remote_cert is not failed
+  when: _remote_cert.rc == 0 and _remote_cert.stdout != ""
   block:
+    - name: Save certificate to temp file
+      ansible.builtin.copy:
+        content: "{{ _remote_cert.stdout }}"
+        dest: "/tmp/remote_cert_{{ cert_host | regex_replace('\\.', '_') }}_{{ cert_port }}.pem"
+        mode: '0600'
+      register: _temp_cert
+
+    - name: Get certificate dates
+      ansible.builtin.shell: |
+        echo "{{ _remote_cert.stdout }}" | openssl x509 -noout -enddate 2>/dev/null | sed 's/notAfter=//'
+      register: _expiry_date
+      changed_when: false
+      failed_when: false
+
     - name: Calculate days remaining
+      ansible.builtin.shell: |
+        expiry_date=$(echo "{{ _remote_cert.stdout }}" | openssl x509 -noout -enddate 2>/dev/null | sed 's/notAfter=//')
+        if date --version >/dev/null 2>&1; then
+          expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null)
+        else
+          expiry_epoch=$(date -jf "%b %d %T %Y %Z" "$expiry_date" +%s 2>/dev/null)
+        fi
+        now_epoch=$(date +%s)
+        echo $(( (expiry_epoch - now_epoch) / 86400 ))
+      register: _days_remaining
+      changed_when: false
+      failed_when: false
+
+    - name: Get subject
+      ansible.builtin.shell: |
+        echo "{{ _remote_cert.stdout }}" | openssl x509 -noout -subject 2>/dev/null | sed 's/subject=//'
+      register: _subject
+      changed_when: false
+      failed_when: false
+
+    - name: Get issuer
+      ansible.builtin.shell: |
+        echo "{{ _remote_cert.stdout }}" | openssl x509 -noout -issuer 2>/dev/null | sed 's/issuer=//'
+      register: _issuer
+      changed_when: false
+      failed_when: false
+
+    - name: Get serial number
+      ansible.builtin.shell: |
+        echo "{{ _remote_cert.stdout }}" | openssl x509 -noout -serial 2>/dev/null | sed 's/serial=//'
+      register: _serial
+      changed_when: false
+      failed_when: false
+
+    - name: Get signature algorithm
+      ansible.builtin.shell: |
+        echo "{{ _remote_cert.stdout }}" | openssl x509 -noout -text 2>/dev/null | grep -m1 "Signature Algorithm:" | sed 's/.*Signature Algorithm: //'
+      register: _sig_alg
+      changed_when: false
+      failed_when: false
+
+    - name: Get public key info
+      ansible.builtin.shell: |
+        key_info=$(echo "{{ _remote_cert.stdout }}" | openssl x509 -noout -text 2>/dev/null)
+        key_alg=$(echo "$key_info" | grep "Public Key Algorithm:" | sed 's/.*Public Key Algorithm: //')
+        key_size=$(echo "$key_info" | grep "Public-Key:" | sed 's/.*(\([0-9]*\) bit).*/\1/')
+        if [ -z "$key_size" ]; then
+          key_size=$(echo "$key_info" | grep "ASN1 OID:" | sed 's/.*ASN1 OID: //')
+        fi
+        echo "${key_alg}|${key_size}"
+      register: _key_info
+      changed_when: false
+      failed_when: false
+
+    - name: Get Subject Alternative Names
+      ansible.builtin.shell: |
+        echo "{{ _remote_cert.stdout }}" | openssl x509 -noout -ext subjectAltName 2>/dev/null | \
+          grep -v "Subject Alternative Name:" | \
+          tr ',' '\n' | \
+          sed 's/^ *//' | \
+          grep -v "^$"
+      register: _san
+      changed_when: false
+      failed_when: false
+
+    - name: Get full certificate chain
+      ansible.builtin.shell: |
+        timeout {{ cert_timeout }} openssl s_client -connect "{{ cert_host }}:{{ cert_port }}" \
+          -servername "{{ _sni_host }}" -showcerts </dev/null 2>/dev/null | \
+          awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/ { print }' | \
+          csplit -s -f /tmp/chain_cert_ - '/BEGIN CERTIFICATE/' '{*}' 2>/dev/null || true
+
+        depth=0
+        for cert_file in /tmp/chain_cert_*; do
+          if [ -s "$cert_file" ] && grep -q "BEGIN CERTIFICATE" "$cert_file" 2>/dev/null; then
+            subj=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/subject=//')
+            iss=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/issuer=//')
+            echo "depth:${depth}|subject:${subj}|issuer:${iss}"
+            depth=$((depth + 1))
+          fi
+          rm -f "$cert_file" 2>/dev/null
+        done
+      register: _chain_info
+      changed_when: false
+      failed_when: false
+
+    - name: Check if self-signed
       ansible.builtin.set_fact:
-        _days_remaining: "{{ ((_remote_cert.not_after | to_datetime('%Y%m%d%H%M%SZ')).date() - (now(utc=true).date())).days }}"
+        _is_self_signed: "{{ _subject.stdout == _issuer.stdout }}"
+
+    - name: Parse chain information
+      ansible.builtin.set_fact:
+        _parsed_chain:
+          depth: "{{ _chain_info.stdout_lines | select('match', '^depth:') | list | length }}"
+          chain_certs: >-
+            {{
+              _chain_info.stdout_lines |
+              select('match', '^depth:') |
+              map('regex_replace', '^depth:(\d+)\|subject:(.*)\|issuer:(.*)', '{"depth": \1, "subject": "\2", "issuer": "\3"}') |
+              map('from_json') |
+              list
+            }}
 
     - name: Determine certificate status
       ansible.builtin.set_fact:
         _cert_status: >-
           {{
-            'expired' if _remote_cert.expired else
-            'critical' if (_days_remaining | int) <= (cert_critical_days | int) else
-            'warning' if (_days_remaining | int) <= (cert_warning_days | int) else
+            'expired' if (_days_remaining.stdout | int) < 0 else
+            'critical' if (_days_remaining.stdout | int) <= (cert_critical_days | int) else
+            'warning' if (_days_remaining.stdout | int) <= (cert_warning_days | int) else
             'ok'
           }}
-
-    - name: Format subject string
-      ansible.builtin.set_fact:
-        _subject_str: "{{ _remote_cert.subject.commonName | default('') }}{% if _remote_cert.subject.organizationName is defined %}, O={{ _remote_cert.subject.organizationName }}{% endif %}{% if _remote_cert.subject.countryName is defined %}, C={{ _remote_cert.subject.countryName }}{% endif %}"
-
-    - name: Format issuer string
-      ansible.builtin.set_fact:
-        _issuer_str: "{{ _remote_cert.issuer.commonName | default('') }}{% if _remote_cert.issuer.organizationName is defined %}, O={{ _remote_cert.issuer.organizationName }}{% endif %}"
-
-    - name: Check if self-signed
-      ansible.builtin.set_fact:
-        _is_self_signed: "{{ _remote_cert.subject == _remote_cert.issuer }}"
 
     - name: Determine certificate source
       ansible.builtin.set_fact:
         _cert_source: >-
           {{
             'Self-Signed' if _is_self_signed else
-            "Let's Encrypt" if "Let's Encrypt" in (_issuer_str | string) else
-            'DigiCert' if 'DigiCert' in (_issuer_str | string) else
-            'Sectigo' if 'Sectigo' in (_issuer_str | string) or 'COMODO' in (_issuer_str | string) else
-            'GlobalSign' if 'GlobalSign' in (_issuer_str | string) else
-            'Amazon' if 'Amazon' in (_issuer_str | string) else
-            'Cloudflare' if 'Cloudflare' in (_issuer_str | string) else
+            "Let's Encrypt" if "Let's Encrypt" in _issuer.stdout else
+            'DigiCert' if 'DigiCert' in _issuer.stdout else
+            'Sectigo' if 'Sectigo' in _issuer.stdout or 'COMODO' in _issuer.stdout else
+            'GlobalSign' if 'GlobalSign' in _issuer.stdout else
+            'Amazon' if 'Amazon' in _issuer.stdout else
+            'Cloudflare' if 'Cloudflare' in _issuer.stdout else
             'External CA'
           }}
 
@@ -93,25 +194,28 @@
           type: "remote"
           exists: true
           status: "{{ _cert_status }}"
-          days_remaining: "{{ _days_remaining | int }}"
-          expiry_date: "{{ _remote_cert.not_after }}"
-          subject: "{{ _subject_str | trim }}"
-          issuer: "{{ _issuer_str | trim }}"
-          serial: "{{ _remote_cert.serial_number }}"
-          key_algorithm: "{{ _remote_cert.public_key_type | default('unknown') }}"
-          key_size: "{{ _remote_cert.public_key_data.size | default(_remote_cert.public_key_data.curve | default('unknown')) }}"
-          sig_algorithm: "{{ _remote_cert.signature_algorithm }}"
-          san: "{{ _remote_cert.subject_alt_name | default([]) }}"
+          days_remaining: "{{ _days_remaining.stdout | int }}"
+          expiry_date: "{{ _expiry_date.stdout }}"
+          subject: "{{ _subject.stdout }}"
+          issuer: "{{ _issuer.stdout }}"
+          serial: "{{ _serial.stdout }}"
+          key_algorithm: "{{ _key_info.stdout.split('|')[0] | default('unknown') }}"
+          key_size: "{{ _key_info.stdout.split('|')[1] | default('unknown') }}"
+          sig_algorithm: "{{ _sig_alg.stdout | default('unknown') }}"
+          san: "{{ _san.stdout_lines | default([]) }}"
           chain:
-            depth: 1
+            depth: "{{ _parsed_chain.depth | int }}"
             is_self_signed: "{{ _is_self_signed }}"
             chain_valid: true
-            root_ca: "{{ _issuer_str | trim }}"
-            intermediates: []
-            chain_certs:
-              - depth: 0
-                subject: "{{ _subject_str | trim }}"
-                issuer: "{{ _issuer_str | trim }}"
-          purpose: "{{ 'TLS Server' if 'serverAuth' in (_remote_cert.extended_key_usage | default([]) | join(',')) else 'General' }}"
+            root_ca: "{{ (_parsed_chain.chain_certs | last).subject if _parsed_chain.chain_certs | length > 0 else _issuer.stdout }}"
+            intermediates: "{{ _parsed_chain.chain_certs[1:-1] | map(attribute='subject') | list if _parsed_chain.chain_certs | length > 2 else [] }}"
+            chain_certs: "{{ _parsed_chain.chain_certs }}"
+          purpose: "TLS Server"
           service: null
           source: "{{ _cert_source }}"
+
+    - name: Clean up temp certificate
+      ansible.builtin.file:
+        path: "{{ _temp_cert.dest }}"
+        state: absent
+      when: _temp_cert.dest is defined
