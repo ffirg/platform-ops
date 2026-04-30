@@ -2,6 +2,29 @@
 # roles/check_server_certs/tasks/main.yml
 # Orchestrate certificate checking - explicit or auto-discovery
 
+# Pre-requisite check for community.crypto modules
+- name: Check for required Python cryptography library
+  ansible.builtin.command:
+    cmd: "{{ ansible_python_interpreter | default('/usr/bin/python3') }} -c 'import cryptography'"
+  register: _crypto_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if cryptography library is missing
+  ansible.builtin.fail:
+    msg: |
+      MISSING DEPENDENCY: python3-cryptography
+
+      The community.crypto modules require the Python cryptography library.
+      Install it on {{ inventory_hostname }} with:
+
+        dnf install python3-cryptography    # RHEL/CentOS/Fedora
+        apt install python3-cryptography    # Debian/Ubuntu
+        pip install cryptography            # pip
+
+      Then re-run this playbook.
+  when: _crypto_check.rc != 0
+
 - name: Include common defaults
   ansible.builtin.include_role:
     name: cert_common
