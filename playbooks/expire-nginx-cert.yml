@@ -1,50 +1,107 @@
 ---
 # playbooks/expire-nginx-cert.yml
-# Generate an expired certificate for testing
+# Generate an expired certificate for testing using mini-CA approach
 
 - name: Create expired nginx certificate
   hosts: all
   become: true
 
   tasks:
-    - name: Install faketime if available
-      ansible.builtin.dnf:
-        name: libfaketime
-        state: present
-      ignore_errors: true
+    - name: Create CA directory
+      ansible.builtin.file:
+        path: /etc/nginx/ssl/ca
+        state: directory
+        mode: '0700'
 
-    - name: Generate expired certificate
+    - name: Create OpenSSL CA config
+      ansible.builtin.copy:
+        dest: /etc/nginx/ssl/ca/openssl.cnf
+        mode: '0600'
+        content: |
+          [ ca ]
+          default_ca = CA_default
+
+          [ CA_default ]
+          dir = /etc/nginx/ssl/ca
+          database = $dir/index.txt
+          serial = $dir/serial
+          new_certs_dir = $dir
+          certificate = $dir/ca.crt
+          private_key = $dir/ca.key
+          default_md = sha256
+          policy = policy_any
+          copy_extensions = copy
+
+          [ policy_any ]
+          countryName = optional
+          stateOrProvinceName = optional
+          organizationName = optional
+          organizationalUnitName = optional
+          commonName = supplied
+          emailAddress = optional
+
+          [ req ]
+          distinguished_name = req_dn
+          x509_extensions = v3_ca
+          prompt = no
+
+          [ req_dn ]
+          CN = Test CA
+
+          [ v3_ca ]
+          basicConstraints = critical, CA:TRUE
+          keyUsage = critical, keyCertSign, cRLSign
+
+          [ server_cert ]
+          basicConstraints = CA:FALSE
+          keyUsage = critical, digitalSignature, keyEncipherment
+          extendedKeyUsage = serverAuth
+
+    - name: Initialize CA database
+      ansible.builtin.shell:
+        cmd: |
+          cd /etc/nginx/ssl/ca
+          touch index.txt
+          echo '01' > serial
+      args:
+        creates: /etc/nginx/ssl/ca/index.txt
+
+    - name: Generate CA key and certificate
+      ansible.builtin.shell:
+        cmd: |
+          cd /etc/nginx/ssl/ca
+          openssl genrsa -out ca.key 2048
+          openssl req -new -x509 -days 365 -key ca.key -out ca.crt -config openssl.cnf
+      args:
+        creates: /etc/nginx/ssl/ca/ca.crt
+
+    - name: Generate server key and CSR
       ansible.builtin.shell:
         cmd: |
           cd /etc/nginx/ssl
-          # Calculate dates: started 10 days ago, ended 5 days ago
-          START_DATE=$(date -d '-10 days' '+%Y%m%d%H%M%SZ' 2>/dev/null || date -v-10d '+%Y%m%d%H%M%SZ')
-          END_DATE=$(date -d '-5 days' '+%Y%m%d%H%M%SZ' 2>/dev/null || date -v-5d '+%Y%m%d%H%M%SZ')
-
-          # Generate key
           openssl genrsa -out server.key 2048
-
-          # Generate CSR
           openssl req -new -key server.key -out server.csr \
             -subj "/CN={{ ansible_fqdn }}/O=Test-Expired/C=GB"
+      register: csr_result
 
-          # Self-sign with explicit dates (requires openssl 1.1.1+)
-          openssl x509 -req -in server.csr \
-            -signkey server.key \
-            -out server.crt \
-            -days 1 \
-            -set_serial $(date +%s) \
-            -not_before "$START_DATE" \
-            -not_after "$END_DATE" 2>/dev/null || \
-          # Fallback for older openssl - create cert expiring in 1 second
-          openssl req -x509 -nodes -days 1 \
-            -newkey rsa:2048 \
-            -keyout server.key \
-            -out server.crt \
-            -subj "/CN={{ ansible_fqdn }}/O=Test-Expired/C=GB" && sleep 2
+    - name: Calculate expired dates
+      ansible.builtin.set_fact:
+        start_date: "{{ '%Y%m%d%H%M%SZ' | strftime((ansible_date_time.epoch | int) - 864000) }}"
+        end_date: "{{ '%Y%m%d%H%M%SZ' | strftime((ansible_date_time.epoch | int) - 432000) }}"
 
+    - name: Sign certificate with expired dates
+      ansible.builtin.shell:
+        cmd: |
+          cd /etc/nginx/ssl
+          openssl ca -batch -config ca/openssl.cnf \
+            -extensions server_cert \
+            -startdate {{ start_date }} \
+            -enddate {{ end_date }} \
+            -in server.csr \
+            -out server.crt \
+            -notext
           rm -f server.csr
-      register: cert_result
+      register: sign_result
 
     - name: Verify certificate is expired
       ansible.builtin.shell:
