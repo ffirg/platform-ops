@@ -1,0 +1,65 @@
+---
+# Example inventory for platform-ops certificate checking
+#
+# Copy and modify for your environment
+
+all:
+  children:
+    # Web servers to check
+    webservers:
+      hosts:
+        web1.example.com:
+        web2.example.com:
+      vars:
+        # Explicit certificate paths for web servers
+        cert_checks:
+          - name: "Nginx SSL"
+            type: file
+            path: /etc/nginx/ssl/server.crt
+          - name: "Apache SSL"
+            type: file
+            path: /etc/httpd/ssl/server.crt
+
+    # Database servers
+    databases:
+      hosts:
+        db1.example.com:
+      vars:
+        cert_checks:
+          - name: "PostgreSQL TLS"
+            type: file
+            path: /var/lib/pgsql/data/server.crt
+
+    # AAP servers (use check-aap-certs.yml for these)
+    aap:
+      hosts:
+        aap.example.com:
+      vars:
+        aap_platform: containerized
+        aap_base: /home/aap/aap
+
+    # Remote endpoints to check (run from localhost)
+    remote_checks:
+      hosts:
+        localhost:
+          ansible_connection: local
+      vars:
+        cert_checks:
+          - name: "Production API"
+            type: remote
+            host: api.example.com
+            port: 443
+          - name: "Staging API"
+            type: remote
+            host: api.staging.example.com
+            port: 443
+          - name: "Load Balancer"
+            type: remote
+            host: lb.example.com
+            port: 443
+
+  vars:
+    # Global settings
+    cert_warning_days: 30
+    cert_critical_days: 14
+    cert_output_json: true

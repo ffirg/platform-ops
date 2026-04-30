@@ -1,0 +1,166 @@
+---
+# roles/cert_report/tasks/main.yml
+# Generate certificate report in multiple formats
+
+- name: Sort report by status and days remaining
+  ansible.builtin.set_fact:
+    cert_report_sorted: >-
+      {{
+        (cert_report | selectattr('status', 'in', ['missing', 'error', 'expired', 'critical']) | list) +
+        (cert_report | selectattr('status', 'eq', 'warning') | list) +
+        (cert_report | selectattr('status', 'eq', 'ok') | sort(attribute='days_remaining') | list)
+      }}
+
+- name: Calculate summary statistics
+  ansible.builtin.set_fact:
+    cert_summary:
+      host: "{{ inventory_hostname }}"
+      platform: "{{ ansible_system | default('unknown') }}"
+      checkDate: "{{ ansible_date_time.iso8601 }}"
+      total: "{{ cert_report | length }}"
+      ok: "{{ cert_report | selectattr('status', 'eq', 'ok') | list | length }}"
+      warning: "{{ cert_report | selectattr('status', 'eq', 'warning') | list | length }}"
+      critical: "{{ cert_report | selectattr('status', 'eq', 'critical') | list | length }}"
+      expired: "{{ cert_report | selectattr('status', 'eq', 'expired') | list | length }}"
+      missing: "{{ cert_report | selectattr('status', 'eq', 'missing') | list | length }}"
+      error: "{{ cert_report | selectattr('status', 'eq', 'error') | list | length }}"
+      thresholds:
+        warningDays: "{{ warn_days }}"
+        criticalDays: "{{ critical_days }}"
+
+# Console output
+- name: Display report header
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop:
+    - "═══════════════════════════════════════════════════════════════════════════════════════"
+    - "                           CERTIFICATE EXPIRY REPORT"
+    - "═══════════════════════════════════════════════════════════════════════════════════════"
+    - "Host: {{ inventory_hostname }}"
+    - "Platform: {{ cert_summary.platform }}"
+    - "Check Date: {{ cert_summary.checkDate }}"
+    - "Thresholds: Warning={{ warn_days }} days, Critical={{ critical_days }} days"
+    - "───────────────────────────────────────────────────────────────────────────────────────"
+
+- name: Display table header
+  ansible.builtin.debug:
+    msg: "{{ '%-25s' | format('CERTIFICATE') }} {{ '%-10s' | format('STATUS') }} {{ '%-12s' | format('SOURCE') }} {{ '%6s' | format('DAYS') }}  {{ '%-15s' | format('KEY') }} {{ '%-25s' | format('ISSUER') }}"
+
+- name: Display each certificate
+  ansible.builtin.debug:
+    msg: >-
+      {{ '%-25s' | format(item.name[:25]) }}
+      {{ '%-10s' | format('[' + item.status | upper + ']') }}
+      {{ '%-12s' | format((item.source | default('Unknown'))[:12]) }}
+      {{ '%6s' | format(item.days_remaining | default('N/A') | string) }}
+      {{ '%-15s' | format((item.key_algorithm | default('') + ' ' + item.key_size | default(''))[:15]) }}
+      {{ (item.issuer | default('N/A'))[:25] }}
+  loop: "{{ cert_report_sorted }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Chain information (if enabled)
+- name: Display chain information
+  when: show_chain | bool
+  block:
+    - name: Display chain header
+      ansible.builtin.debug:
+        msg: "───────────────────────────────────────────────────────────────────────────────────────"
+
+    - name: Display chain details for each certificate
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.name }}: Chain depth={{ item.chain.depth | default(1) }},
+          Root={{ (item.chain.root_ca | default('N/A'))[:40] }},
+          Self-signed={{ item.chain.is_self_signed | default(false) }}
+      loop: "{{ cert_report_sorted | selectattr('chain', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.chain is defined
+
+# Summary
+- name: Display summary
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop:
+    - "───────────────────────────────────────────────────────────────────────────────────────"
+    - "SUMMARY: Total={{ cert_summary.total }} | OK={{ cert_summary.ok }} | Warning={{ cert_summary.warning }} | Critical={{ cert_summary.critical }} | Expired={{ cert_summary.expired }} | Missing={{ cert_summary.missing }}"
+    - "───────────────────────────────────────────────────────────────────────────────────────"
+
+# Alerts
+- name: Display alerts
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop:
+    - "{{ '*** EXPIRED: ' + cert_summary.expired | string + ' certificate(s) have EXPIRED! ***' if cert_summary.expired | int > 0 else '' }}"
+    - "{{ '*** CRITICAL: ' + cert_summary.critical | string + ' certificate(s) expire within ' + critical_days | string + ' days ***' if cert_summary.critical | int > 0 else '' }}"
+    - "{{ '*** WARNING: ' + cert_summary.warning | string + ' certificate(s) expire within ' + warn_days | string + ' days ***' if cert_summary.warning | int > 0 else '' }}"
+    - "{{ '*** ALL CERTIFICATES OK ***' if cert_summary.expired | int == 0 and cert_summary.critical | int == 0 and cert_summary.warning | int == 0 else '' }}"
+  when: item != ''
+
+# JSON output for API/portal integration
+- name: Build JSON report
+  ansible.builtin.set_fact:
+    _json_report:
+      host: "{{ cert_summary.host }}"
+      platform: "{{ cert_summary.platform }}"
+      checkDate: "{{ cert_summary.checkDate }}"
+      thresholds:
+        warningDays: "{{ warn_days | int }}"
+        criticalDays: "{{ critical_days | int }}"
+      summary:
+        total: "{{ cert_summary.total | int }}"
+        ok: "{{ cert_summary.ok | int }}"
+        warning: "{{ cert_summary.warning | int }}"
+        critical: "{{ cert_summary.critical | int }}"
+        expired: "{{ cert_summary.expired | int }}"
+        missing: "{{ cert_summary.missing | int }}"
+      certificates: "{{ cert_report_sorted }}"
+
+- name: Output JSON report
+  ansible.builtin.debug:
+    msg: "{{ json_var_name }}={{ _json_report | to_json }}"
+  when: output_json | bool
+
+# Save JSON to file
+- name: Save JSON report to file
+  ansible.builtin.copy:
+    content: "{{ _json_report | to_nice_json }}"
+    dest: "{{ report_file | regex_replace('\\.md$', '.json') }}"
+    mode: '0644'
+  when: report_file | length > 0
+
+# Markdown report
+- name: Generate markdown report
+  ansible.builtin.template:
+    src: report.md.j2
+    dest: "{{ report_file }}"
+    mode: '0644'
+  when: report_file | length > 0
+
+- name: Report file locations
+  ansible.builtin.debug:
+    msg: "Reports saved to: {{ report_file }} and {{ report_file | regex_replace('\\.md$', '.json') }}"
+  when: report_file | length > 0
+
+# Fail conditions
+- name: Fail if certificates are expired
+  ansible.builtin.fail:
+    msg: "{{ cert_summary.expired }} certificate(s) have expired!"
+  when:
+    - cert_fail_on_expired | default(true) | bool
+    - cert_summary.expired | int > 0
+
+- name: Fail if certificates are critical
+  ansible.builtin.fail:
+    msg: "{{ cert_summary.critical }} certificate(s) expire within {{ critical_days }} days!"
+  when:
+    - cert_fail_on_critical | default(false) | bool
+    - cert_summary.critical | int > 0
+
+- name: Fail if certificates have warnings
+  ansible.builtin.fail:
+    msg: "{{ cert_summary.warning }} certificate(s) expire within {{ warn_days }} days!"
+  when:
+    - cert_fail_on_warning | default(false) | bool
+    - cert_summary.warning | int > 0

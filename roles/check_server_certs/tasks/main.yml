@@ -1,0 +1,77 @@
+---
+# roles/check_server_certs/tasks/main.yml
+# Orchestrate certificate checking - explicit or auto-discovery
+
+- name: Include common defaults
+  ansible.builtin.include_role:
+    name: cert_common
+    tasks_from: ../defaults/main.yml
+    public: true
+  ignore_errors: true
+
+- name: Initialize certificate report
+  ansible.builtin.set_fact:
+    cert_report: []
+
+# Auto-discovery if no explicit checks provided
+- name: Run certificate auto-discovery
+  ansible.builtin.include_tasks: discover.yml
+  when: cert_auto_discover | bool
+
+- name: Display certificates to check
+  ansible.builtin.debug:
+    msg: "Checking {{ cert_checks | length }} certificates"
+
+# Process each certificate check
+- name: Check file-based certificates
+  ansible.builtin.include_role:
+    name: check_cert_file
+  vars:
+    cert_path: "{{ item.path }}"
+    cert_name: "{{ item.name }}"
+    cert_service: "{{ item.service | default('') }}"
+  loop: "{{ cert_checks | selectattr('type', 'eq', 'file') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _file_checks
+
+- name: Collect file certificate results
+  ansible.builtin.set_fact:
+    cert_report: "{{ cert_report + [cert_info] }}"
+  when: cert_info is defined
+  loop: "{{ cert_checks | selectattr('type', 'eq', 'file') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Check remote TLS certificates
+  ansible.builtin.include_role:
+    name: check_cert_remote
+  vars:
+    cert_host: "{{ item.host }}"
+    cert_port: "{{ item.port | default(443) }}"
+    cert_name: "{{ item.name }}"
+  loop: "{{ cert_checks | selectattr('type', 'eq', 'remote') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Collect remote certificate results
+  ansible.builtin.set_fact:
+    cert_report: "{{ cert_report + [cert_info] }}"
+  when: cert_info is defined
+  loop: "{{ cert_checks | selectattr('type', 'eq', 'remote') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Generate report
+- name: Generate certificate report
+  ansible.builtin.include_role:
+    name: cert_report
+  vars:
+    cert_report: "{{ cert_report }}"
+    warn_days: "{{ cert_warning_days }}"
+    critical_days: "{{ cert_critical_days }}"
+    report_file: "{{ cert_report_file }}"
+    show_paths: "{{ cert_show_paths }}"
+    show_chain: "{{ cert_show_chain }}"
+    output_json: "{{ cert_output_json }}"
+  when: cert_report | length > 0

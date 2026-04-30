@@ -1,0 +1,84 @@
+---
+# roles/check_aap_certs/tasks/containerized.yml
+# Discover AAP certificates in containerized deployment (podman)
+
+- name: Discover running AAP containers
+  ansible.builtin.shell: |
+    podman ps --format '{{ '{{' }}.Names{{ '}}' }}' 2>/dev/null | \
+      grep -E '^(automation-|postgresql|redis|receptor)' | \
+      sort -u
+  register: _running_containers
+  changed_when: false
+
+- name: Display discovered containers
+  ansible.builtin.debug:
+    msg: "Discovered {{ _running_containers.stdout_lines | length }} AAP containers: {{ _running_containers.stdout_lines | join(', ') }}"
+
+# Map discovered containers to certificate paths
+- name: Map containers to certificates
+  ansible.builtin.set_fact:
+    cert_checks: >-
+      {{
+        cert_checks | default([]) + [{
+          'name': (
+            'Gateway' if 'gateway' in item and 'proxy' not in item else
+            'Gateway Proxy' if 'gateway-proxy' in item else
+            'Controller' if 'controller' in item else
+            'Hub' if 'hub' in item else
+            'EDA' if 'eda' in item else
+            'Automation Dashboard' if 'reporter' in item else
+            'Receptor' if item == 'receptor' else
+            'PostgreSQL' if item == 'postgresql' or 'postgresql' in item else
+            'Redis' if 'redis' in item else
+            item | regex_replace('^automation-', '') | title
+          ),
+          'container': item,
+          'path': (
+            aap_base + '/gateway/etc/gateway.cert' if 'gateway' in item and 'proxy' not in item else
+            aap_base + '/gateway/etc/gateway-proxy.cert' if 'gateway-proxy' in item else
+            aap_base + '/controller/etc/tower.cert' if 'controller' in item else
+            aap_base + '/hub/etc/pulp.cert' if 'hub' in item else
+            aap_base + '/eda/etc/eda.cert' if 'eda' in item else
+            aap_base + '/reporter/etc/reporter.cert' if 'reporter' in item else
+            aap_base + '/receptor/etc/receptor.crt' if item == 'receptor' else
+            aap_base + '/postgresql/server.crt' if item == 'postgresql' or 'postgresql' in item else
+            aap_base + '/redis/server.crt' if 'redis' in item else
+            ''
+          ),
+          'type': 'file',
+          'service': 'aap-' + (
+            'gateway' if 'gateway' in item else
+            'controller' if 'controller' in item else
+            'hub' if 'hub' in item else
+            'eda' if 'eda' in item else
+            'reporter' if 'reporter' in item else
+            'receptor' if 'receptor' in item else
+            'postgresql' if 'postgresql' in item else
+            'redis' if 'redis' in item else
+            item
+          )
+        }]
+      }}
+  loop: "{{ _running_containers.stdout_lines }}"
+  when: item != ''
+
+# Add infrastructure certificates (not tied to containers)
+- name: Add infrastructure certificates
+  ansible.builtin.set_fact:
+    cert_checks: >-
+      {{
+        cert_checks + [
+          {'name': 'CA Certificate', 'path': aap_base + '/tls/ca.cert', 'type': 'file', 'service': 'aap-ca'},
+          {'name': 'Receptor Mesh CA', 'path': aap_base + '/receptor/etc/mesh-CA.crt', 'type': 'file', 'service': 'aap-receptor'},
+          {'name': 'Gateway Redis Client', 'path': aap_base + '/gateway/etc/redis.cert', 'type': 'file', 'service': 'aap-gateway'}
+        ]
+      }}
+
+# Remove duplicates and empty paths
+- name: Filter valid certificates
+  ansible.builtin.set_fact:
+    cert_checks: "{{ cert_checks | selectattr('path', 'ne', '') | list | unique(attribute='path') }}"
+
+- name: Display certificates to check
+  ansible.builtin.debug:
+    msg: "Will check {{ cert_checks | length }} AAP certificates"

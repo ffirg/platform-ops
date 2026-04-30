@@ -1,0 +1,38 @@
+---
+# playbooks/check-certs.yml
+# Generic certificate checking playbook
+#
+# Usage:
+#   # Auto-discover certificates on all hosts
+#   ansible-playbook playbooks/check-certs.yml -i inventory.yml
+#
+#   # Check specific certificate files
+#   ansible-playbook playbooks/check-certs.yml -i inventory.yml \
+#     -e '{"cert_checks": [{"name": "Nginx", "type": "file", "path": "/etc/nginx/ssl/server.crt"}]}'
+#
+#   # Check remote TLS endpoints
+#   ansible-playbook playbooks/check-certs.yml -i localhost, \
+#     -e '{"cert_checks": [{"name": "GitHub", "type": "remote", "host": "github.com", "port": 443}]}'
+#
+#   # Generate markdown report
+#   ansible-playbook playbooks/check-certs.yml -i inventory.yml \
+#     -e "cert_report_file=/tmp/cert-report.md"
+
+- name: Check Server Certificates
+  hosts: all
+  gather_facts: true
+
+  vars:
+    # Override these as needed
+    cert_warning_days: 30
+    cert_critical_days: 14
+    cert_show_paths: false
+    cert_show_chain: true
+    cert_output_json: true
+    cert_report_file: ""
+
+    # Explicit checks (empty = auto-discover)
+    cert_checks: []
+
+  roles:
+    - role: check_server_certs

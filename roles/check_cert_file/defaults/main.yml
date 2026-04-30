@@ -1,0 +1,14 @@
+---
+# roles/check_cert_file/defaults/main.yml
+# Defaults for single certificate file checking
+
+# Required input
+cert_path: ""
+cert_name: ""
+
+# Optional: associate with a service
+cert_service: ""
+
+# Thresholds (inherit from cert_common if not set)
+cert_warning_days: "{{ hostvars[inventory_hostname].cert_warning_days | default(30) }}"
+cert_critical_days: "{{ hostvars[inventory_hostname].cert_critical_days | default(14) }}"

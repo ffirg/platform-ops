@@ -1,0 +1,135 @@
+---
+# roles/check_server_certs/tasks/discover.yml
+# Auto-discover certificates on the system
+
+- name: Initialize discovered certificates list
+  ansible.builtin.set_fact:
+    _discovered_certs: []
+
+# File-based discovery
+- name: Discover certificate files
+  when: cert_discover_files | bool
+  block:
+    - name: Find certificate files in common locations
+      ansible.builtin.shell: |
+        for pattern in \
+          "/etc/ssl/certs/*.crt" \
+          "/etc/ssl/certs/*.pem" \
+          "/etc/pki/tls/certs/*.crt" \
+          "/etc/pki/tls/certs/*.pem" \
+          "/etc/nginx/ssl/*.crt" \
+          "/etc/nginx/ssl/*.pem" \
+          "/etc/httpd/ssl/*.crt" \
+          "/etc/httpd/ssl/*.pem" \
+          "/etc/letsencrypt/live/*/cert.pem" \
+          "/etc/letsencrypt/live/*/fullchain.pem"
+        do
+          ls $pattern 2>/dev/null || true
+        done | sort -u | head -50
+      register: _found_certs
+      changed_when: false
+      failed_when: false
+
+    - name: Filter to actual certificate files (not CA bundles)
+      ansible.builtin.shell: |
+        for cert in {{ _found_certs.stdout_lines | join(' ') }}; do
+          # Skip CA bundle files
+          if echo "$cert" | grep -qE "(ca-bundle|ca-certificates|trusted)"; then
+            continue
+          fi
+          # Check if it's a valid certificate (not just a key or CSR)
+          if openssl x509 -in "$cert" -noout 2>/dev/null; then
+            echo "$cert"
+          fi
+        done
+      register: _valid_certs
+      changed_when: false
+      failed_when: false
+      when: _found_certs.stdout_lines | length > 0
+
+    - name: Try to associate certificates with services
+      ansible.builtin.shell: |
+        cert_path="{{ item }}"
+        service=""
+
+        # Check nginx config
+        if grep -rq "$cert_path" /etc/nginx/ 2>/dev/null; then
+          service="nginx"
+        # Check httpd/apache config
+        elif grep -rq "$cert_path" /etc/httpd/ 2>/dev/null || grep -rq "$cert_path" /etc/apache2/ 2>/dev/null; then
+          service="httpd"
+        # Check haproxy config
+        elif grep -rq "$cert_path" /etc/haproxy/ 2>/dev/null; then
+          service="haproxy"
+        # Check postfix config
+        elif grep -rq "$cert_path" /etc/postfix/ 2>/dev/null; then
+          service="postfix"
+        # Check dovecot config
+        elif grep -rq "$cert_path" /etc/dovecot/ 2>/dev/null; then
+          service="dovecot"
+        fi
+
+        echo "$service"
+      loop: "{{ _valid_certs.stdout_lines | default([]) }}"
+      register: _cert_services
+      changed_when: false
+      failed_when: false
+
+    - name: Build discovered file certificates list
+      ansible.builtin.set_fact:
+        _discovered_certs: >-
+          {{
+            _discovered_certs + [{
+              'name': item.0 | basename | regex_replace('\.(crt|pem|cert)$', ''),
+              'type': 'file',
+              'path': item.0,
+              'service': item.1.stdout | default('')
+            }]
+          }}
+      loop: "{{ (_valid_certs.stdout_lines | default([])) | zip(_cert_services.results | default([])) | list }}"
+      when: _valid_certs.stdout_lines is defined
+
+# Remote/listening port discovery
+- name: Discover TLS listening ports
+  when: cert_discover_remote | bool
+  block:
+    - name: Find listening TLS ports
+      ansible.builtin.shell: |
+        # Try ss first (modern)
+        if command -v ss >/dev/null 2>&1; then
+          ss -tlnp 2>/dev/null | grep -E ':443|:8443|:636|:993|:995|:5432|:6379' | \
+            awk '{print $4}' | sed 's/.*://' | sort -u
+        # Fall back to netstat
+        elif command -v netstat >/dev/null 2>&1; then
+          netstat -tlnp 2>/dev/null | grep -E ':443|:8443|:636|:993|:995|:5432|:6379' | \
+            awk '{print $4}' | sed 's/.*://' | sort -u
+        fi
+      register: _listening_ports
+      changed_when: false
+      failed_when: false
+
+    - name: Get hostname for remote checks
+      ansible.builtin.set_fact:
+        _local_hostname: "{{ ansible_fqdn | default(ansible_hostname) | default('localhost') }}"
+
+    - name: Build discovered remote certificates list
+      ansible.builtin.set_fact:
+        _discovered_certs: >-
+          {{
+            _discovered_certs + [{
+              'name': 'TLS:' + item,
+              'type': 'remote',
+              'host': _local_hostname,
+              'port': item | int
+            }]
+          }}
+      loop: "{{ _listening_ports.stdout_lines | default([]) }}"
+
+- name: Display discovered certificates
+  ansible.builtin.debug:
+    msg: "Discovered {{ _discovered_certs | length }} certificates to check"
+
+- name: Set cert_checks from discovery
+  ansible.builtin.set_fact:
+    cert_checks: "{{ _discovered_certs }}"
+  when: _discovered_certs | length > 0

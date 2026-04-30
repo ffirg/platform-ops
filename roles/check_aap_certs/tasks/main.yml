@@ -1,0 +1,138 @@
+---
+# roles/check_aap_certs/tasks/main.yml
+# AAP-specific certificate checking - discovers and checks AAP components
+
+- name: Initialize certificate report
+  ansible.builtin.set_fact:
+    cert_report: []
+    cert_checks: []
+
+# Platform auto-detection
+- name: Auto-detect AAP platform type
+  when: aap_platform == 'auto'
+  block:
+    - name: Check for containerized AAP (podman)
+      ansible.builtin.shell: |
+        podman ps --format '{{ '{{' }}.Names{{ '}}' }}' 2>/dev/null | grep -qE '^automation-' && echo "containerized" || echo ""
+      register: _check_containerized
+      changed_when: false
+      failed_when: false
+
+    - name: Check for OpenShift AAP
+      ansible.builtin.shell: |
+        oc get pods -n "{{ aap_namespace }}" 2>/dev/null | grep -qE 'automation-' && echo "openshift" || echo ""
+      register: _check_openshift
+      changed_when: false
+      failed_when: false
+      when: _check_containerized.stdout == ""
+
+    - name: Check for Kubernetes AAP
+      ansible.builtin.shell: |
+        kubectl get pods -n "{{ aap_namespace }}" 2>/dev/null | grep -qE 'automation-' && echo "kubernetes" || echo ""
+      register: _check_kubernetes
+      changed_when: false
+      failed_when: false
+      when: _check_containerized.stdout == "" and (_check_openshift.stdout | default("")) == ""
+
+    - name: Set detected platform
+      ansible.builtin.set_fact:
+        aap_platform: >-
+          {{
+            'containerized' if _check_containerized.stdout == 'containerized' else
+            'openshift' if (_check_openshift.stdout | default('')) == 'openshift' else
+            'kubernetes' if (_check_kubernetes.stdout | default('')) == 'kubernetes' else
+            'unknown'
+          }}
+
+    - name: Display detected platform
+      ansible.builtin.debug:
+        msg: "Detected AAP platform: {{ aap_platform }}"
+
+- name: Fail if platform not detected
+  ansible.builtin.fail:
+    msg: |
+      Could not detect AAP platform. Checked:
+      - Containerized (podman): {{ _check_containerized.stdout | default('not found') }}
+      - OpenShift: {{ _check_openshift.stdout | default('not checked') }}
+      - Kubernetes: {{ _check_kubernetes.stdout | default('not checked') }}
+
+      Please set aap_platform explicitly to: containerized, openshift, or kubernetes
+  when: aap_platform == 'unknown'
+
+# Dispatch to platform-specific discovery
+- name: Run containerized AAP certificate discovery
+  ansible.builtin.include_tasks: containerized.yml
+  when: aap_platform == 'containerized'
+
+- name: Run OpenShift AAP certificate discovery
+  ansible.builtin.include_tasks: openshift.yml
+  when: aap_platform == 'openshift'
+
+- name: Run Kubernetes AAP certificate discovery
+  ansible.builtin.include_tasks: kubernetes.yml
+  when: aap_platform == 'kubernetes'
+
+# Check all discovered certificates using common role
+- name: Check discovered certificates
+  ansible.builtin.include_role:
+    name: check_cert_file
+  vars:
+    cert_path: "{{ item.path }}"
+    cert_name: "{{ item.name }}"
+    cert_service: "{{ item.service | default('aap') }}"
+  loop: "{{ cert_checks }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _cert_results
+
+- name: Collect certificate results
+  ansible.builtin.set_fact:
+    cert_report: "{{ cert_report + [cert_info] }}"
+  loop: "{{ cert_checks }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: cert_info is defined
+
+# Detect AAP CA source for context
+- name: Detect if CA is installer-generated
+  ansible.builtin.shell: |
+    ca_path="{{ aap_base }}/tls/ca.cert"
+    if [ -f "$ca_path" ]; then
+      subject=$(openssl x509 -in "$ca_path" -noout -subject 2>/dev/null)
+      if echo "$subject" | grep -qE "(Red Hat|Ansible)"; then
+        echo "installer"
+      else
+        echo "custom"
+      fi
+    else
+      echo "missing"
+    fi
+  register: _ca_source
+  changed_when: false
+  failed_when: false
+  when: aap_platform == 'containerized'
+
+- name: Add CA source context to report
+  ansible.builtin.set_fact:
+    cert_report: >-
+      {{
+        cert_report | map('combine', {
+          'aap_ca_source': _ca_source.stdout | default('unknown'),
+          'platform': aap_platform
+        }) | list
+      }}
+  when: _ca_source is defined
+
+# Generate report
+- name: Generate AAP certificate report
+  ansible.builtin.include_role:
+    name: cert_report
+  vars:
+    cert_report: "{{ cert_report }}"
+    warn_days: "{{ cert_warning_days }}"
+    critical_days: "{{ cert_critical_days }}"
+    report_file: "{{ cert_report_file }}"
+    show_paths: "{{ cert_show_paths }}"
+    show_chain: "{{ cert_show_chain }}"
+    output_json: "{{ cert_output_json }}"
+  when: cert_report | length > 0

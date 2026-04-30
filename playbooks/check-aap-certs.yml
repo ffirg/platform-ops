@@ -1,0 +1,51 @@
+---
+# playbooks/check-aap-certs.yml
+# AAP-specific certificate checking playbook
+#
+# Usage:
+#   # Auto-detect platform and check all AAP certificates
+#   ansible-playbook playbooks/check-aap-certs.yml -i aap-inventory.yml
+#
+#   # Specify platform explicitly
+#   ansible-playbook playbooks/check-aap-certs.yml -i aap-inventory.yml \
+#     -e "aap_platform=containerized"
+#
+#   # Generate report file
+#   ansible-playbook playbooks/check-aap-certs.yml -i aap-inventory.yml \
+#     -e "cert_report_file=/tmp/aap-cert-report.md"
+#
+#   # Custom AAP base path
+#   ansible-playbook playbooks/check-aap-certs.yml -i aap-inventory.yml \
+#     -e "aap_base=/opt/aap"
+
+- name: Check AAP Certificates
+  hosts: all
+  gather_facts: true
+
+  vars:
+    # Platform: auto, containerized, openshift, kubernetes
+    aap_platform: auto
+
+    # Thresholds
+    cert_warning_days: 30
+    cert_critical_days: 14
+
+    # Output options
+    cert_show_paths: false
+    cert_show_chain: true
+    cert_output_json: true
+    cert_report_file: ""
+
+    # Fail conditions
+    cert_fail_on_expired: true
+    cert_fail_on_critical: false
+    cert_fail_on_warning: false
+
+    # Containerized AAP base path
+    aap_base: "{{ ansible_env.HOME }}/aap"
+
+    # OpenShift/Kubernetes namespace
+    aap_namespace: "aap"
+
+  roles:
+    - role: check_aap_certs

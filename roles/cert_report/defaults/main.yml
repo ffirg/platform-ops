@@ -1,0 +1,17 @@
+---
+# roles/cert_report/defaults/main.yml
+# Defaults for certificate report generation
+
+# Input: list of cert_info objects
+cert_report: []
+
+# Thresholds for status display
+warn_days: 30
+critical_days: 14
+
+# Output options
+report_file: ""       # Path to save markdown report
+show_paths: false     # Show file paths in output
+show_chain: true      # Show chain information
+output_json: true     # Output JSON for API consumption
+json_var_name: "CERT_REPORT_JSON"  # Variable name for JSON output

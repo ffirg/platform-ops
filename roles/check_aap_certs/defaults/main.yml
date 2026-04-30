@@ -1,0 +1,77 @@
+---
+# roles/check_aap_certs/defaults/main.yml
+# AAP-specific certificate checking defaults
+
+# Platform type: containerized, openshift, kubernetes
+# Set to 'auto' for automatic detection
+aap_platform: auto
+
+# Thresholds
+cert_warning_days: 30
+cert_critical_days: 14
+
+# Report generation
+cert_report_file: ""
+cert_show_paths: false
+cert_show_chain: true
+cert_output_json: true
+
+# Fail conditions
+cert_fail_on_expired: true
+cert_fail_on_critical: false
+cert_fail_on_warning: false
+
+# Containerized-specific defaults
+aap_base: "{{ ansible_env.HOME }}/aap"
+
+# OpenShift/Kubernetes-specific defaults
+aap_namespace: "aap"
+kubeconfig: "{{ ansible_env.HOME }}/.kube/config"
+
+# AAP component certificate mappings
+aap_cert_mappings:
+  containerized:
+    gateway:
+      container_pattern: "automation-gateway"
+      cert_path: "{{ aap_base }}/gateway/etc/gateway.cert"
+      name: "Gateway"
+    controller:
+      container_pattern: "automation-controller"
+      cert_path: "{{ aap_base }}/controller/etc/tower.cert"
+      name: "Controller"
+    hub:
+      container_pattern: "automation-hub"
+      cert_path: "{{ aap_base }}/hub/etc/pulp.cert"
+      name: "Hub"
+    eda:
+      container_pattern: "automation-eda"
+      cert_path: "{{ aap_base }}/eda/etc/eda.cert"
+      name: "EDA"
+    reporter:
+      container_pattern: "automation-reporter"
+      cert_path: "{{ aap_base }}/reporter/etc/reporter.cert"
+      name: "Automation Dashboard"
+    receptor:
+      container_pattern: "receptor"
+      cert_path: "{{ aap_base }}/receptor/etc/receptor.crt"
+      name: "Receptor"
+    postgresql:
+      container_pattern: "postgresql"
+      cert_path: "{{ aap_base }}/postgresql/server.crt"
+      name: "PostgreSQL"
+    redis:
+      container_pattern: "redis"
+      cert_path: "{{ aap_base }}/redis/server.crt"
+      name: "Redis"
+
+# Infrastructure certificates (not tied to containers)
+aap_infra_certs:
+  - name: "CA Certificate"
+    path: "{{ aap_base }}/tls/ca.cert"
+    type: "ca"
+  - name: "Receptor Mesh CA"
+    path: "{{ aap_base }}/receptor/etc/mesh-CA.crt"
+    type: "ca"
+  - name: "Gateway Redis Client"
+    path: "{{ aap_base }}/gateway/etc/redis.cert"
+    type: "client"
