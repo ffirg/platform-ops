@@ -146,31 +146,31 @@
       failed_when: false
 
     - name: Extract certificate chain (if bundle)
-      ansible.builtin.shell: |
-        # Count certificates in the file
-        cert_count=$(grep -c "BEGIN CERTIFICATE" "{{ cert_path }}" 2>/dev/null || echo "1")
-        echo "cert_count:${cert_count}"
+      ansible.builtin.shell:
+        cmd: |
+          cert_file="{{ cert_path }}"
+          cert_count=$(grep -c "BEGIN CERTIFICATE" "$cert_file" 2>/dev/null || echo "1")
+          echo "cert_count:${cert_count}"
 
-        # Extract each certificate's subject and issuer
-        if [ "$cert_count" -gt 1 ]; then
-          awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' "{{ cert_path }}" | \
-          csplit -s -f /tmp/cert_chain_ - '/BEGIN CERTIFICATE/' '{*}' 2>/dev/null || true
+          if [ "$cert_count" -gt 1 ]; then
+            awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' "$cert_file" | \
+            csplit -s -f /tmp/cert_chain_ - '/BEGIN CERTIFICATE/' '{*}' 2>/dev/null || true
 
-          depth=0
-          for cert_file in /tmp/cert_chain_*; do
-            if [ -s "$cert_file" ] && grep -q "BEGIN CERTIFICATE" "$cert_file" 2>/dev/null; then
-              subj=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/subject=//')
-              iss=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/issuer=//')
-              echo "depth:${depth}|subject:${subj}|issuer:${iss}"
-              depth=$((depth + 1))
-            fi
-            rm -f "$cert_file" 2>/dev/null
-          done
-        else
-          subj=$(openssl x509 -in "{{ cert_path }}" -noout -subject 2>/dev/null | sed 's/subject=//')
-          iss=$(openssl x509 -in "{{ cert_path }}" -noout -issuer 2>/dev/null | sed 's/issuer=//')
-          echo "depth:0|subject:${subj}|issuer:${iss}"
-        fi
+            depth=0
+            for cf in /tmp/cert_chain_*; do
+              if [ -s "$cf" ] && grep -q "BEGIN CERTIFICATE" "$cf" 2>/dev/null; then
+                subj=$(openssl x509 -in "$cf" -noout -subject 2>/dev/null | sed 's/subject=//')
+                iss=$(openssl x509 -in "$cf" -noout -issuer 2>/dev/null | sed 's/issuer=//')
+                echo "depth:${depth}|subject:${subj}|issuer:${iss}"
+                depth=$((depth + 1))
+              fi
+              rm -f "$cf" 2>/dev/null
+            done
+          else
+            subj=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/subject=//')
+            iss=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/issuer=//')
+            echo "depth:0|subject:${subj}|issuer:${iss}"
+          fi
       register: _chain_info
       changed_when: false
       failed_when: false
