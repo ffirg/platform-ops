@@ -7,6 +7,15 @@
   become: true
 
   tasks:
+    - name: Enable required repos
+      ansible.builtin.command:
+        cmd: subscription-manager repos --enable={{ item }}
+      loop:
+        - rhel-9-for-x86_64-baseos-rpms
+        - rhel-9-for-x86_64-appstream-rpms
+      ignore_errors: true
+      changed_when: false
+
     - name: Install nginx and cockpit
       ansible.builtin.dnf:
         name:
