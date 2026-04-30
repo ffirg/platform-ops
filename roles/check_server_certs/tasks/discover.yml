@@ -31,16 +31,16 @@
       failed_when: false
 
     - name: Filter to actual certificate files (not CA bundles)
-      ansible.builtin.shell: |
-        cert="{{ item }}"
-        # Skip CA bundle files
-        if echo "$cert" | grep -qE "(ca-bundle|ca-certificates|trusted)"; then
-          exit 0
-        fi
-        # Check if it's a valid certificate (not just a key or CSR)
-        if openssl x509 -in "$cert" -noout 2>/dev/null; then
-          echo "$cert"
-        fi
+      ansible.builtin.shell:
+        cmd: |
+          # Skip CA bundle files
+          if echo "{{ item }}" | grep -qE "(ca-bundle|ca-certificates|trusted)"; then
+            exit 0
+          fi
+          # Check if it's a valid certificate (not just a key or CSR)
+          if openssl x509 -in "{{ item }}" -noout 2>/dev/null; then
+            echo "{{ item }}"
+          fi
       loop: "{{ _found_certs.stdout_lines | default([]) }}"
       register: _valid_certs_raw
       changed_when: false
