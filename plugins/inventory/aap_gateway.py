@@ -10,6 +10,7 @@ Discovers all AAP service nodes and groups them by service type:
   - aap_all: All unique AAP hosts
 
 Credentials are retrieved from macOS Keychain (service: aap-credentials).
+Use EITHER token OR username/password authentication.
 
 Usage:
   ansible-playbook -i inventory/aap_gateway.py playbooks/check-aap-certs.yml
@@ -41,35 +42,50 @@ def get_keychain_value(account: str) -> str:
         return ""
 
 
-def get_aap_credentials() -> tuple[str, str, str]:
-    """Get AAP credentials from keychain."""
+def get_aap_credentials() -> tuple[str, str, str, str]:
+    """Get AAP credentials from keychain. Returns (host, token, user, password)."""
     host = get_keychain_value("aap-hostname")
+    token = get_keychain_value("aap-token")
     user = get_keychain_value("aap-username")
     password = get_keychain_value("aap-password")
 
-    if not all([host, user, password]):
-        sys.stderr.write("Error: AAP credentials not found in keychain.\n")
+    if not host:
+        sys.stderr.write("Error: AAP hostname not found in keychain.\n")
         sys.stderr.write("Configure with:\n")
         sys.stderr.write('  security add-generic-password -s "aap-credentials" -a "aap-hostname" -w "your-host"\n')
+        sys.exit(1)
+
+    if not token and not (user and password):
+        sys.stderr.write("Error: AAP credentials not found in keychain.\n")
+        sys.stderr.write("Configure with EITHER token OR username/password:\n")
+        sys.stderr.write('  # Token auth (preferred)\n')
+        sys.stderr.write('  security add-generic-password -s "aap-credentials" -a "aap-token" -w "your-token"\n')
+        sys.stderr.write('  # OR basic auth\n')
         sys.stderr.write('  security add-generic-password -s "aap-credentials" -a "aap-username" -w "admin"\n')
         sys.stderr.write('  security add-generic-password -s "aap-credentials" -a "aap-password" -w "password"\n')
         sys.exit(1)
 
-    return host, user, password
+    return host, token, user, password
 
 
-def api_request(host: str, user: str, password: str, endpoint: str) -> dict:
+def api_request(host: str, token: str, user: str, password: str, endpoint: str) -> dict:
     """Make authenticated request to AAP Gateway API."""
     import base64
 
     url = f"https://{host}/api/gateway/v1/{endpoint}"
 
-    # Build Basic auth header directly (avoids issues with Bearer challenge)
-    credentials = base64.b64encode(f"{user}:{password}".encode()).decode()
-    headers = {
-        "Authorization": f"Basic {credentials}",
-        "Content-Type": "application/json"
-    }
+    # Use token auth if available, otherwise basic auth
+    if token:
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+    else:
+        credentials = base64.b64encode(f"{user}:{password}".encode()).decode()
+        headers = {
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/json"
+        }
 
     # Disable SSL verification (for self-signed certs)
     ssl_context = ssl.create_default_context()
@@ -88,14 +104,14 @@ def api_request(host: str, user: str, password: str, endpoint: str) -> dict:
 
 def build_inventory() -> dict:
     """Build Ansible inventory from AAP Gateway API."""
-    host, user, password = get_aap_credentials()
+    host, token, user, password = get_aap_credentials()
 
     # Get service types for name mapping
-    service_types_data = api_request(host, user, password, "service_types/")
+    service_types_data = api_request(host, token, user, password, "service_types/")
     type_map = {st["id"]: st["name"] for st in service_types_data.get("results", [])}
 
     # Get all service nodes
-    service_nodes = api_request(host, user, password, "service_nodes/")
+    service_nodes = api_request(host, token, user, password, "service_nodes/")
 
     # Build groups by service type
     groups = defaultdict(lambda: {"hosts": []})

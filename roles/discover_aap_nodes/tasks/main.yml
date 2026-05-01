@@ -5,12 +5,28 @@
 - name: Validate required variables
   ansible.builtin.assert:
     that:
-      - aap_hostname is defined
-      - aap_username is defined
-      - aap_password is defined
-    fail_msg: "aap_hostname, aap_username, and aap_password must be defined"
+      - aap_hostname is defined and aap_hostname | length > 0
+      - (aap_token is defined and aap_token | length > 0) or
+        (aap_username is defined and aap_username | length > 0 and
+         aap_password is defined and aap_password | length > 0)
+    fail_msg: "aap_hostname and either aap_token OR (aap_username + aap_password) must be defined"
 
-- name: Query Gateway API for service types
+- name: Set authentication method
+  ansible.builtin.set_fact:
+    _use_token_auth: "{{ aap_token is defined and aap_token | length > 0 }}"
+
+- name: Query Gateway API for service types (token auth)
+  ansible.builtin.uri:
+    url: "https://{{ aap_hostname }}/api/gateway/v1/service_types/"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ aap_token }}"
+    validate_certs: "{{ aap_validate_certs }}"
+    return_content: true
+  register: _service_types
+  when: _use_token_auth
+
+- name: Query Gateway API for service types (basic auth)
   ansible.builtin.uri:
     url: "https://{{ aap_hostname }}/api/gateway/v1/service_types/"
     method: GET
@@ -20,8 +36,20 @@
     validate_certs: "{{ aap_validate_certs }}"
     return_content: true
   register: _service_types
+  when: not _use_token_auth
 
-- name: Query Gateway API for service nodes
+- name: Query Gateway API for service nodes (token auth)
+  ansible.builtin.uri:
+    url: "https://{{ aap_hostname }}/api/gateway/v1/service_nodes/"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ aap_token }}"
+    validate_certs: "{{ aap_validate_certs }}"
+    return_content: true
+  register: _service_nodes
+  when: _use_token_auth
+
+- name: Query Gateway API for service nodes (basic auth)
   ansible.builtin.uri:
     url: "https://{{ aap_hostname }}/api/gateway/v1/service_nodes/"
     method: GET
@@ -31,6 +59,7 @@
     validate_certs: "{{ aap_validate_certs }}"
     return_content: true
   register: _service_nodes
+  when: not _use_token_auth
 
 - name: Build service type mapping
   ansible.builtin.set_fact:
@@ -75,6 +104,7 @@
       Discovered AAP Infrastructure:
       ═══════════════════════════════════════════════════════════════
       Gateway: {{ aap_hostname }}
+      Auth: {{ 'token' if _use_token_auth else 'basic' }}
       Service Types: {{ _service_type_map.values() | list | join(', ') }}
 
       Hosts added to inventory:

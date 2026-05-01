@@ -4,10 +4,17 @@ Ansible roles and playbooks for platform operations, including certificate check
 
 ## AAP Access
 
-Use macOS keychain with `aap-credentials` service for AAP access:
+Use macOS keychain with `aap-credentials` service for AAP access. Use EITHER token OR username/password, not both.
 
 ```bash
+# Hostname (always required)
 AAP_HOST=$(security find-generic-password -s "aap-credentials" -a "aap-hostname" -w)
+
+# Option 1: Token auth (preferred)
+AAP_TOKEN=$(security find-generic-password -s "aap-credentials" -a "aap-token" -w)
+curl -sk -H "Authorization: Bearer ${AAP_TOKEN}" "https://${AAP_HOST}/api/controller/v2/..."
+
+# Option 2: Basic auth
 AAP_USER=$(security find-generic-password -s "aap-credentials" -a "aap-username" -w)
 AAP_PASS=$(security find-generic-password -s "aap-credentials" -a "aap-password" -w)
 curl -sk -u "${AAP_USER}:${AAP_PASS}" "https://${AAP_HOST}/api/controller/v2/..."

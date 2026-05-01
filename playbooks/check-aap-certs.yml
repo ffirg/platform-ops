@@ -33,11 +33,14 @@
   vars:
     # Keychain lookups for local execution
     _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null || true', errors='ignore') }}"
+    _keychain_token: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-token -w 2>/dev/null || true', errors='ignore') }}"
     _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null || true', errors='ignore') }}"
     _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null || true', errors='ignore') }}"
 
     # AAP connection - keychain with env fallback
+    # Use token OR username/password, not both
     aap_hostname: "{{ _keychain_host | default(lookup('env', 'AAP_HOST'), true) }}"
+    aap_token: "{{ _keychain_token | default(lookup('env', 'AAP_TOKEN'), true) }}"
     aap_username: "{{ _keychain_user | default(lookup('env', 'AAP_USERNAME'), true) }}"
     aap_password: "{{ _keychain_pass | default(lookup('env', 'AAP_PASSWORD'), true) }}"
 
@@ -45,8 +48,7 @@
     - role: discover_aap_nodes
       when:
         - aap_hostname | length > 0
-        - aap_username | length > 0
-        - aap_password | length > 0
+        - (aap_token | length > 0) or (aap_username | length > 0 and aap_password | length > 0)
 
 # =============================================================================
 # Play 2: Check certificates on discovered AAP nodes

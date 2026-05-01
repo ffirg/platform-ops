@@ -15,19 +15,24 @@ cd platform-ops
 
 ### macOS Keychain Setup (Recommended)
 
-Store AAP credentials securely in macOS Keychain:
+Store AAP credentials securely in macOS Keychain. Use EITHER token OR username/password, not both.
 
 ```bash
-# Add credentials (one-time setup)
+# Hostname (always required)
 security add-generic-password -s "aap-credentials" -a "aap-hostname" -w "your-aap-host.example.com"
+
+# Option 1: Token auth (preferred)
+security add-generic-password -s "aap-credentials" -a "aap-token" -w "your-oauth-token"
+
+# Option 2: Basic auth
 security add-generic-password -s "aap-credentials" -a "aap-username" -w "admin"
 security add-generic-password -s "aap-credentials" -a "aap-password" -w "yourpassword"
 
 # Verify
-security find-generic-password -s "aap-credentials" -a "aap-username" -w
+security find-generic-password -s "aap-credentials" -a "aap-token" -w  # or aap-username
 ```
 
-Playbooks automatically retrieve credentials from keychain, with environment variables as fallback.
+Playbooks automatically retrieve credentials from keychain, with environment variables as fallback (`AAP_HOST`, `AAP_TOKEN` or `AAP_USERNAME`/`AAP_PASSWORD`).
 
 ### Target Host Requirements
 

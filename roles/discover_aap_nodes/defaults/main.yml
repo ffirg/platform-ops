@@ -4,8 +4,10 @@
 
 # AAP Gateway connection (override via extra vars or inventory)
 # aap_hostname: required
-# aap_username: required
-# aap_password: required
+#
+# Authentication - use EITHER token OR username/password:
+# aap_token: OAuth2 token (preferred)
+# aap_username + aap_password: Basic auth (fallback)
 aap_validate_certs: false
 
 # Default platform for discovered hosts

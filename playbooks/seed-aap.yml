@@ -3,9 +3,13 @@
 # Seed AAP with the platform-ops project and job templates
 #
 # Credentials are retrieved from macOS Keychain (preferred) or environment variables.
+# Use EITHER token OR username/password authentication, not both.
 #
 # Setup keychain (one-time):
 #   security add-generic-password -s "aap-credentials" -a "aap-hostname" -w "carmaap1.lan"
+#   # Option 1: Token auth (preferred)
+#   security add-generic-password -s "aap-credentials" -a "aap-token" -w "your-oauth-token"
+#   # Option 2: Basic auth
 #   security add-generic-password -s "aap-credentials" -a "aap-username" -w "admin"
 #   security add-generic-password -s "aap-credentials" -a "aap-password" -w "yourpassword"
 #
@@ -14,6 +18,7 @@
 #
 # Or with environment variables (fallback):
 #   export AAP_HOST=carmaap1.lan
+#   export AAP_TOKEN=your-oauth-token  # OR
 #   export AAP_USERNAME=admin
 #   export AAP_PASSWORD=yourpassword
 #   ansible-playbook playbooks/seed-aap.yml
@@ -27,19 +32,24 @@
     # AAP Connection - keychain lookup with env fallback
     # Keychain: security find-generic-password -s "aap-credentials" -a "<account>" -w
     _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null', errors='ignore') }}"
+    _keychain_token: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-token -w 2>/dev/null', errors='ignore') }}"
     _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null', errors='ignore') }}"
     _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null', errors='ignore') }}"
 
     # Use keychain if available, else env, else fail
+    # Token auth takes precedence over username/password
     aap_hostname: "https://{{ _keychain_host | default(lookup('env', 'AAP_HOST'), true) | mandatory }}"
-    aap_username: "{{ _keychain_user | default(lookup('env', 'AAP_USERNAME'), true) | mandatory }}"
-    aap_password: "{{ _keychain_pass | default(lookup('env', 'AAP_PASSWORD'), true) | mandatory }}"
+    aap_token: "{{ _keychain_token | default(lookup('env', 'AAP_TOKEN'), true) }}"
+    aap_username: "{{ _keychain_user | default(lookup('env', 'AAP_USERNAME'), true) }}"
+    aap_password: "{{ _keychain_pass | default(lookup('env', 'AAP_PASSWORD'), true) }}"
     aap_validate_certs: false
 
     # Controller collection compatibility aliases
+    # Use token if available, otherwise use username/password
     controller_host: "{{ aap_hostname }}"
-    controller_username: "{{ aap_username }}"
-    controller_password: "{{ aap_password }}"
+    controller_oauthtoken: "{{ aap_token if aap_token | length > 0 else omit }}"
+    controller_username: "{{ omit if aap_token | length > 0 else aap_username }}"
+    controller_password: "{{ omit if aap_token | length > 0 else aap_password }}"
     controller_validate_certs: false
 
     # Organization
