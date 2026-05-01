@@ -86,11 +86,20 @@ After seeding, you must configure the SSH credential for job templates to connec
 3. Add your SSH private key or password
 4. Optionally update **Resources → Inventories → Platform Ops** with your target hosts
 
+### AAP Job Templates
+
+| Job Template | Description |
+|--------------|-------------|
+| `platform-ops \| Check Server Certificates` | Check certificates on managed nodes with auto-discovery |
+| `platform-ops \| Check AAP Certificates` | Check certificates on AAP infrastructure (Gateway API discovery) |
+| `platform-ops \| Setup Test Certs` | Generate test CA and server certificates on target hosts |
+| `platform-ops \| Test Certificate Expiry` | Create certificates with specific expiry scenarios (ok/warning/critical/expired) |
+
 ## Certificate Checking
 
 Extensible certificate checking for any server, with specialized support for Red Hat Ansible Automation Platform (AAP).
 
-### Quick Start
+### Running Locally
 
 ```bash
 # Check certificates on a server (auto-discovery)
