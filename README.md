@@ -95,30 +95,13 @@ After seeding, you must configure the SSH credential for job templates to connec
 | `platform-ops \| Setup Test Certs` | Generate test CA and server certificates on target hosts |
 | `platform-ops \| Test Certificate Expiry` | Create certificates with specific expiry scenarios (ok/warning/critical/expired) |
 
+### AAP Node Discovery
+
+The `discover_aap_nodes` role queries the Gateway API and dynamically adds discovered hosts to the inventory using `add_host`. This enables playbooks like `check-aap-certs.yml` to work in AAP job templates without requiring a pre-populated inventory.
+
 ## Certificate Checking
 
 Extensible certificate checking for any server, with specialized support for Red Hat Ansible Automation Platform (AAP).
-
-### Running Locally
-
-```bash
-# Check certificates on a server (auto-discovery)
-ansible-playbook playbooks/check-certs.yml -i myserver.example.com,
-
-# Check certificates with explicit file paths
-ansible-playbook playbooks/check-certs.yml -i myserver.example.com, \
-  -e '{"cert_checks": [{"name": "Nginx", "type": "file", "path": "/etc/nginx/ssl/server.crt"}]}'
-
-# Check AAP certificates (requires AAP host with podman/oc/kubectl)
-ansible-playbook playbooks/check-aap-certs.yml -i aap.example.com,
-
-# Generate test certificates (requires become/sudo)
-ansible-playbook playbooks/setup-test-certs.yml -i testserver.example.com, -K
-
-# Test certificate expiry scenarios: ok, warning, critical, expired (requires become/sudo)
-ansible-playbook playbooks/test-cert-expiry.yml -i testserver.example.com, \
-  -e "cert_scenario=warning" -K
-```
 
 ### Features
 
@@ -149,12 +132,6 @@ ansible-playbook playbooks/test-cert-expiry.yml -i testserver.example.com, \
 | `check_cert_file` | Check a single certificate file |
 | `cert_report` | Generate reports (console, markdown, JSON) |
 | `cert_common` | Shared defaults and variables |
-
-### AAP Node Discovery
-
-The `discover_aap_nodes` role queries the Gateway API and dynamically adds discovered hosts to the inventory using `add_host`. This enables playbooks like `check-aap-certs.yml` to work in AAP job templates without requiring a pre-populated inventory.
-
-The `discover-aap-inventory.yml` playbook can also generate a static `inventory/aap.yml` file for local use.
 
 ### Usage Examples
 
