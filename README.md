@@ -169,7 +169,7 @@ ansible-playbook playbooks/discover-aap-inventory.yml -e discovery_mode=commit_r
 ansible-playbook playbooks/discover-aap-inventory.yml -e discovery_mode=update_aap
 ```
 
-In AAP job templates, pass `gateway_host`, `gateway_user`, `gateway_pass` as extra vars along with the desired `discovery_mode`.
+In AAP job templates, pass `aap_host`, `aap_user`, `aap_pass` as extra vars along with the desired `discovery_mode`.
 
 ### Usage Examples
 
