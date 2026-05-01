@@ -3,7 +3,9 @@
 # Seed AAP with the platform-ops project and job templates
 #
 # Usage:
-#   ansible-playbook playbooks/seed-aap.yml -e "aap_hostname=carmaap1.lan"
+#   export CONTROLLER_USERNAME=admin
+#   export CONTROLLER_PASSWORD=yourpassword
+#   ansible-playbook playbooks/seed-aap.yml
 
 - name: Seed AAP with Platform-Ops Project and Job Templates
   hosts: localhost
@@ -12,9 +14,10 @@
 
   vars:
     # AAP Connection (both naming conventions for compatibility)
+    # Credentials MUST be provided via environment variables - no defaults
     aap_hostname: "https://{{ lookup('env', 'CONTROLLER_HOST') | default('carmaap1.lan', true) }}"
-    aap_username: "{{ lookup('env', 'CONTROLLER_USERNAME') | | mandatory }}"
-    aap_password: "{{ lookup('env', 'CONTROLLER_PASSWORD') | | mandatory }}"
+    aap_username: "{{ lookup('env', 'CONTROLLER_USERNAME') | mandatory }}"
+    aap_password: "{{ lookup('env', 'CONTROLLER_PASSWORD') | mandatory }}"
     aap_validate_certs: false
     controller_host: "{{ aap_hostname }}"
     controller_username: "{{ aap_username }}"
