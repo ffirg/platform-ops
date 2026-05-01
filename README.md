@@ -121,7 +121,6 @@ ansible-playbook playbooks/test-cert-expiry.yml -i testserver.example.com, \
 | `setup-test-certs.yml` | Generate test certificates on target hosts |
 | `test-cert-expiry.yml` | Create certificates with specific expiry scenarios |
 | `seed-aap.yml` | Bootstrap AAP with project and job templates |
-| `discover-aap-inventory.yml` | Generate static inventory from Gateway API |
 
 ### Roles
 
@@ -139,25 +138,6 @@ ansible-playbook playbooks/test-cert-expiry.yml -i testserver.example.com, \
 The `discover_aap_nodes` role queries the Gateway API and dynamically adds discovered hosts to the inventory using `add_host`. This enables playbooks like `check-aap-certs.yml` to work in AAP job templates without requiring a pre-populated inventory.
 
 The `discover-aap-inventory.yml` playbook can also generate a static `inventory/aap.yml` file for local use.
-
-#### Discovery Modes
-
-The discovery playbook supports two output modes via `discovery_mode`:
-
-| Mode | Description |
-|------|-------------|
-| `report` | Display discovered infrastructure only (default) |
-| `update_aap` | Create/update hosts in AAP inventory via Controller API |
-
-```bash
-# Report mode (default)
-ansible-playbook playbooks/discover-aap-inventory.yml
-
-# Update AAP inventory directly
-ansible-playbook playbooks/discover-aap-inventory.yml -e discovery_mode=update_aap
-```
-
-In AAP job templates, pass `aap_hostname`, `aap_username`, `aap_password` (or `aap_token`) as extra vars along with the desired `discovery_mode`.
 
 ### Usage Examples
 

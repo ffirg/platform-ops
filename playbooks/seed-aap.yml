@@ -75,18 +75,7 @@
 
       - name: "Platform Ops - AAP"
         organization: "Default"
-        description: "AAP infrastructure hosts - sourced from inventory/aap.yml"
-
-    # Inventory Sources - sourced from project files
-    controller_inventory_sources:
-      - name: "AAP Gateway Discovery"
-        inventory: "Platform Ops - AAP"
-        source: scm
-        source_project: "Platform Ops"
-        source_path: "inventory/aap.yml"
-        update_on_launch: false
-        overwrite: true
-        overwrite_vars: true
+        description: "AAP infrastructure hosts - dynamically discovered via Gateway API"
 
     # Hosts (static hosts for non-AAP inventories)
     controller_hosts:
@@ -127,20 +116,10 @@
         extra_vars:
           cert_scenario: expired
 
-      - name: "platform-ops | Discover AAP Inventory"
-        organization: "Default"
-        project: "Platform Ops"
-        playbook: "playbooks/discover-aap-inventory.yml"
-        inventory: "Platform Ops - AAP"
-        ask_variables_on_launch: true
-        extra_vars:
-          discovery_mode: report
-
   roles:
     - infra.aap_configuration.controller_organizations
     - infra.aap_configuration.controller_projects
     - infra.aap_configuration.controller_inventories
-    - infra.aap_configuration.controller_inventory_sources
     - infra.aap_configuration.controller_hosts
     - infra.aap_configuration.controller_job_templates
 
@@ -153,13 +132,11 @@
           Created:
             - Project: Platform Ops
             - Inventory: Platform Ops (managed nodes for certificate testing)
-            - Inventory: Platform Ops - AAP (sourced from inventory/aap.yml)
-            - Inventory Source: AAP Gateway Discovery
+            - Inventory: Platform Ops - AAP (dynamically discovered via Gateway API)
             - Job Template: platform-ops | Check Server Certificates
             - Job Template: platform-ops | Check AAP Certificates
             - Job Template: platform-ops | Setup Test Certs
             - Job Template: platform-ops | Test Certificate Expiry
-            - Job Template: platform-ops | Discover AAP Inventory
 
           Note: Job templates require machine credentials to be added
           manually via the AAP UI or API after seeding.
