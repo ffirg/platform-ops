@@ -24,7 +24,7 @@ Always prefix AAP API commands with these credential lookups. Never hardcode hos
 
 ## Testing
 
-Always follow `docs/certificate-check-test-plan.md` when running certificate tests unless told otherwise.
+Always follow `docs/testing/certificate-check-test-plan.md` when running certificate tests unless told otherwise.
 
 ## AAP Asset Management Rules
 

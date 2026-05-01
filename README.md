@@ -291,7 +291,7 @@ The JSON is output as a single line prefixed with `CERT_REPORT_JSON=` for easy p
 
 ## Testing
 
-See [docs/certificate-check-test-plan.md](docs/certificate-check-test-plan.md) for the certificate checking test plan and execution log.
+See [docs/testing/certificate-check-test-plan.md](docs/testing/certificate-check-test-plan.md) for the certificate checking test plan and execution log.
 
 ## License
 
