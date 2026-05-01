@@ -111,6 +111,15 @@
         extra_vars:
           cert_scenario: expired
 
+      - name: "platform-ops | Discover AAP Inventory"
+        organization: "Default"
+        project: "Platform Ops"
+        playbook: "playbooks/discover-aap-inventory.yml"
+        inventory: "Platform Ops - AAP"
+        ask_variables_on_launch: true
+        extra_vars:
+          write_inventory_file: false
+
   roles:
     - infra.aap_configuration.controller_organizations
     - infra.aap_configuration.controller_projects
@@ -132,6 +141,7 @@
             - Job Template: platform-ops | Check AAP Certificates
             - Job Template: platform-ops | Setup Test Certs
             - Job Template: platform-ops | Test Certificate Expiry
+            - Job Template: platform-ops | Discover AAP Inventory
 
           Note: Job templates require machine credentials to be added
           manually via the AAP UI or API after seeding.

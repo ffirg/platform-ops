@@ -92,26 +92,21 @@
             | list
           }}
 
+    - name: Initialize host services
+      ansible.builtin.set_fact:
+        host_services: {}
+
     - name: Build host services mapping
       ansible.builtin.set_fact:
         host_services: >-
-          {{
-            dict(
-              discovered_nodes | map('community.general.dict_kv', 'host')
-              | map('combine', {'services': []})
-              | map(attribute='host')
-              | zip(
-                  discovered_nodes | map('extract',
-                    dict(_service_nodes.json.results | groupby('address') | map('last')
-                    | map('map', attribute='summary_fields.service_cluster.service_type')
-                    | map('map', 'extract', service_type_map)
-                    | map('list')
-                    | zip(_service_nodes.json.results | groupby('address') | map('first'))
-                    | map('reverse') | map('list'))
-                  )
-                )
-            )
-          }}
+          {{ host_services | combine({
+               item: _service_nodes.json.results
+                     | selectattr('address', 'eq', item)
+                     | map(attribute='summary_fields.service_cluster.service_type')
+                     | map('extract', service_type_map)
+                     | list
+             }) }}
+      loop: "{{ discovered_nodes }}"
 
     - name: Display discovered infrastructure
       ansible.builtin.debug:
@@ -127,11 +122,26 @@
           {% endfor %}
           ═══════════════════════════════════════════════════════════════
 
+    - name: Initialize inventory hostvars
+      ansible.builtin.set_fact:
+        inventory_hostvars: {}
+
+    - name: Build hostvars for inventory
+      ansible.builtin.set_fact:
+        inventory_hostvars: >-
+          {{ inventory_hostvars | combine({
+               item: {
+                 'aap_services': host_services[item],
+                 'aap_platform': 'containerized'
+               }
+             }) }}
+      loop: "{{ discovered_nodes }}"
+
     - name: Build inventory JSON for output
       ansible.builtin.set_fact:
         inventory_json:
           _meta:
-            hostvars: "{{ dict(discovered_nodes | zip(discovered_nodes | map('extract', host_services) | map('community.general.dict_kv', 'aap_services') | map('combine', {'aap_platform': 'containerized'}))) }}"
+            hostvars: "{{ inventory_hostvars }}"
           all:
             children: "{{ ['aap_all'] }}"
           aap_all:
