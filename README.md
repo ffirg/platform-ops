@@ -142,27 +142,22 @@ The `discover-aap-inventory.yml` playbook can also generate a static `inventory/
 
 #### Discovery Modes
 
-The discovery playbook supports multiple output modes via `discovery_mode`:
+The discovery playbook supports two output modes via `discovery_mode`:
 
 | Mode | Description |
 |------|-------------|
-| `report` | Display discovered infrastructure only (default in AAP) |
-| `write_file` | Write inventory/aap.yml locally (default on CLI) |
+| `report` | Display discovered infrastructure only (default) |
 | `update_aap` | Create/update hosts in AAP inventory via Controller API |
-| `commit_repo` | Write file, commit and push to git repo |
 
 ```bash
-# Local: write inventory file (default)
+# Report mode (default)
 ansible-playbook playbooks/discover-aap-inventory.yml
 
-# Local: commit and push to repo
-ansible-playbook playbooks/discover-aap-inventory.yml -e discovery_mode=commit_repo
-
-# Local: update AAP inventory directly
+# Update AAP inventory directly
 ansible-playbook playbooks/discover-aap-inventory.yml -e discovery_mode=update_aap
 ```
 
-In AAP job templates, pass `aap_hostname`, `aap_username`, `aap_password` as extra vars along with the desired `discovery_mode`.
+In AAP job templates, pass `aap_hostname`, `aap_username`, `aap_password` (or `aap_token`) as extra vars along with the desired `discovery_mode`.
 
 ### Usage Examples
 
