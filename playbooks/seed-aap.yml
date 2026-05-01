@@ -133,6 +133,9 @@
             - Job Template: platform-ops | Setup Test Certs
             - Job Template: platform-ops | Test Certificate Expiry
 
+          Note: Job templates require machine credentials to be added
+          manually via the AAP UI or API after seeding.
+
           Test certificate scenarios:
             ansible-playbook playbooks/test-cert-expiry.yml -e cert_scenario=ok
             ansible-playbook playbooks/test-cert-expiry.yml -e cert_scenario=warning

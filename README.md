@@ -62,12 +62,16 @@ ansible-playbook playbooks/seed-aap.yml
 
 This creates:
 - **Project**: Platform Ops (linked to this GitHub repo)
-- **Inventory**: Platform Ops (host: aap-mgd-node-1.lan)
+- **Inventories**:
+  - Platform Ops (managed nodes for certificate testing)
+  - Platform Ops - AAP (AAP infrastructure hosts)
 - **Job Templates**:
   - `platform-ops | Check Server Certificates`
   - `platform-ops | Check AAP Certificates`
   - `platform-ops | Setup Test Certs`
   - `platform-ops | Test Certificate Expiry`
+
+**Note**: Job templates require machine credentials to be added manually via the AAP UI or API after seeding.
 
 ## Certificate Checking
 
