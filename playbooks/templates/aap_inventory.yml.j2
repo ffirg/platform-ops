@@ -33,12 +33,30 @@ all:
     # AAP containerized service certificate paths (podman)
     # These are checked automatically by check-aap-certs.yml
     aap_container_services:
+      # Controller
       - automation-controller-web
       - automation-controller-task
+      - automation-controller-rsyslog
+      # Hub
       - automation-hub-api
+      - automation-hub-content
       - automation-hub-web
+      - automation-hub-worker-1
+      - automation-hub-worker-2
+      # EDA
       - automation-eda-api
+      - automation-eda-daphne
+      - automation-eda-scheduler
       - automation-eda-web
+      - automation-eda-worker-1
+      - automation-eda-worker-2
+      - automation-eda-activation-worker-1
+      - automation-eda-activation-worker-2
+      # Gateway
       - automation-gateway
-      - redis
+      - automation-gateway-proxy
+      # Infrastructure
       - postgresql
+      - receptor
+      - redis-tcp
+      - redis-unix
