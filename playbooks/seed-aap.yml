@@ -90,7 +90,7 @@
         credential_type: "Machine"
         description: "SSH credential for Platform Ops managed nodes - UPDATE WITH VALID SSH KEY"
         inputs:
-          username: "root"
+          username: "your_user"
 
     # Job Templates - prefix with repo name for clarity
     controller_templates:
