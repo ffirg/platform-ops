@@ -57,15 +57,25 @@
         update_project: true
         wait: false
 
-    # Inventory
+    # Inventories
     controller_inventories:
       - name: "Platform Ops"
         organization: "Default"
+        description: "Managed nodes for certificate testing"
+
+      - name: "Platform Ops - AAP"
+        organization: "Default"
+        description: "AAP infrastructure hosts for certificate checking"
 
     # Hosts
     controller_hosts:
       - name: "aap-mgd-node-1.lan"
         inventory: "Platform Ops"
+
+      - name: "carmaap1.lan"
+        inventory: "Platform Ops - AAP"
+        variables:
+          aap_platform: containerized
 
     # Job Templates - prefix with repo name for clarity
     controller_templates:
@@ -82,7 +92,7 @@
         organization: "Default"
         project: "Platform Ops"
         playbook: "playbooks/check-aap-certs.yml"
-        inventory: "Platform Ops"
+        inventory: "Platform Ops - AAP"
         ask_variables_on_launch: true
 
       - name: "platform-ops | Setup Test Certs"
@@ -116,7 +126,8 @@
 
           Created:
             - Project: Platform Ops
-            - Inventory: Platform Ops (host: aap-mgd-node-1.lan)
+            - Inventory: Platform Ops (managed nodes for certificate testing)
+            - Inventory: Platform Ops - AAP (AAP infrastructure hosts)
             - Job Template: platform-ops | Check Server Certificates
             - Job Template: platform-ops | Check AAP Certificates
             - Job Template: platform-ops | Setup Test Certs

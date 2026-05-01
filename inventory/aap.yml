@@ -1,0 +1,77 @@
+---
+# inventory/aap.yml
+# AAP Infrastructure Inventory
+#
+# This inventory covers all AAP components and services for certificate checking.
+# Adjust hosts and groups based on your deployment topology.
+#
+# Deployment types:
+#   - all-in-one: Single host runs all services (containerized)
+#   - distributed: Services spread across multiple hosts
+#   - openshift/kubernetes: Services run as pods (use check-aap-certs.yml with aap_platform)
+
+all:
+  children:
+    # All-in-one deployment (single host running all containerized services)
+    aap_all_in_one:
+      hosts:
+        carmaap1.lan:
+          aap_platform: containerized
+
+    # Distributed deployment components (uncomment and configure as needed)
+    #
+    # aap_controller:
+    #   hosts:
+    #     controller1.example.com:
+    #     controller2.example.com:
+    #
+    # aap_hub:
+    #   hosts:
+    #     hub1.example.com:
+    #
+    # aap_eda:
+    #   hosts:
+    #     eda1.example.com:
+    #
+    # aap_gateway:
+    #   hosts:
+    #     gateway1.example.com:
+    #
+    # aap_database:
+    #   hosts:
+    #     db1.example.com:
+    #       # Database hosts may have PostgreSQL TLS certs
+    #       cert_checks:
+    #         - name: "PostgreSQL TLS"
+    #           type: file
+    #           path: /var/lib/pgsql/data/server.crt
+    #
+    # aap_execution:
+    #   hosts:
+    #     exec1.example.com:
+    #     exec2.example.com:
+    #
+    # aap_hop:
+    #   hosts:
+    #     hop1.example.com:
+
+  vars:
+    # Default platform for certificate discovery
+    aap_platform: containerized
+
+    # Certificate check thresholds
+    cert_warning_days: 30
+    cert_critical_days: 14
+
+    # AAP containerized service certificate paths (podman)
+    # These are checked automatically by check-aap-certs.yml
+    aap_container_services:
+      - automation-controller-web
+      - automation-controller-task
+      - automation-hub-api
+      - automation-hub-web
+      - automation-eda-api
+      - automation-eda-web
+      - automation-gateway
+      - redis
+      - postgresql
