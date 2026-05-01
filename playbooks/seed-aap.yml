@@ -118,7 +118,7 @@
         inventory: "Platform Ops - AAP"
         ask_variables_on_launch: true
         extra_vars:
-          write_inventory_file: false
+          discovery_mode: report
 
   roles:
     - infra.aap_configuration.controller_organizations
