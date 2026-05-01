@@ -7,8 +7,8 @@ Test plan for validating the certificate checking playbooks across all expiry sc
 - AAP instance with Platform Ops project synced
 - Managed node with nginx installed (`aap-mgd-node-1.lan`)
 - Job templates configured:
-  - **Test Certificate Expiry** (id: 17) - generates test certificates
-  - **Check Server Certificates** (id: 14) - runs certificate checks
+  - **platform-ops | Test Certificate Expiry** - generates test certificates
+  - **platform-ops | Check Server Certificates** - runs certificate checks
 
 ## Test Scenarios
 

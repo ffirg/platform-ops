@@ -67,9 +67,9 @@
       - name: "aap-mgd-node-1.lan"
         inventory: "Platform Ops"
 
-    # Job Templates
+    # Job Templates - prefix with repo name for clarity
     controller_templates:
-      - name: "Check Server Certificates"
+      - name: "platform-ops | Check Server Certificates"
         organization: "Default"
         project: "Platform Ops"
         playbook: "playbooks/check-certs.yml"
@@ -78,21 +78,21 @@
         extra_vars:
           cert_checks: []
 
-      - name: "Check AAP Certificates"
+      - name: "platform-ops | Check AAP Certificates"
         organization: "Default"
         project: "Platform Ops"
         playbook: "playbooks/check-aap-certs.yml"
         inventory: "Platform Ops"
         ask_variables_on_launch: true
 
-      - name: "Setup Test Certs"
+      - name: "platform-ops | Setup Test Certs"
         organization: "Default"
         project: "Platform Ops"
         playbook: "playbooks/setup-test-certs.yml"
         inventory: "Platform Ops"
         ask_variables_on_launch: true
 
-      - name: "Test Certificate Expiry"
+      - name: "platform-ops | Test Certificate Expiry"
         organization: "Default"
         project: "Platform Ops"
         playbook: "playbooks/test-cert-expiry.yml"
@@ -117,10 +117,10 @@
           Created:
             - Project: Platform Ops
             - Inventory: Platform Ops (host: aap-mgd-node-1.lan)
-            - Job Template: Check Server Certificates
-            - Job Template: Check AAP Certificates
-            - Job Template: Setup Test Certs
-            - Job Template: Test Certificate Expiry
+            - Job Template: platform-ops | Check Server Certificates
+            - Job Template: platform-ops | Check AAP Certificates
+            - Job Template: platform-ops | Setup Test Certs
+            - Job Template: platform-ops | Test Certificate Expiry
 
           Test certificate scenarios:
             ansible-playbook playbooks/test-cert-expiry.yml -e cert_scenario=ok

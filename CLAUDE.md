@@ -15,6 +15,25 @@ curl -sk -u "${AAP_USER}:${AAP_PASS}" "https://${AAP_HOST}/api/controller/v2/...
 
 Always prefix AAP API commands with these credential lookups. Never hardcode hostnames or credentials.
 
+## AAP Asset Management Rules
+
+1. **Credentials from keychain**: Always obtain AAP credentials from macOS keychain unless explicitly told otherwise.
+
+2. **Naming convention**: Prefix job templates with the GitHub repo name using pipe separator:
+   - Format: `<repo-name> | <descriptive name>`
+   - Example: `platform-ops | Check Server Certificates`
+
+3. **Keep seed playbook in sync**: When creating, updating, or removing AAP assets (projects, credentials, inventories, hosts, job templates, etc.) via Ansible collections or API calls, always reflect those changes in `playbooks/seed-aap.yml`.
+
+4. **Asset types to track in seed playbook**:
+   - Organizations
+   - Projects
+   - Inventories and hosts
+   - Credentials
+   - Job templates
+   - Workflow templates
+   - Schedules
+
 ## API Paths
 
 - Controller API: `/api/controller/v2/`
