@@ -26,11 +26,9 @@
   when: _crypto_check.rc != 0
 
 - name: Include common defaults
-  ansible.builtin.include_role:
-    name: cert_common
-    tasks_from: ../defaults/main.yml
-    public: true
-  ignore_errors: true
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/../cert_common/defaults/main.yml"
+  failed_when: false
 
 - name: Initialize certificate results
   ansible.builtin.set_fact:

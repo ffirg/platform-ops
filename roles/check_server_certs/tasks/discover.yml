@@ -11,21 +11,24 @@
   when: cert_discover_files | bool
   block:
     - name: Find certificate files in common locations
-      ansible.builtin.shell: |
-        for pattern in \
-          "/etc/ssl/certs/*.crt" \
-          "/etc/ssl/certs/*.pem" \
-          "/etc/pki/tls/certs/*.crt" \
-          "/etc/pki/tls/certs/*.pem" \
-          "/etc/nginx/ssl/*.crt" \
-          "/etc/nginx/ssl/*.pem" \
-          "/etc/httpd/ssl/*.crt" \
-          "/etc/httpd/ssl/*.pem" \
-          "/etc/letsencrypt/live/*/cert.pem" \
-          "/etc/letsencrypt/live/*/fullchain.pem"
-        do
-          ls $pattern 2>/dev/null || true
-        done | sort -u | head -50
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          for pattern in \
+            "/etc/ssl/certs/*.crt" \
+            "/etc/ssl/certs/*.pem" \
+            "/etc/pki/tls/certs/*.crt" \
+            "/etc/pki/tls/certs/*.pem" \
+            "/etc/nginx/ssl/*.crt" \
+            "/etc/nginx/ssl/*.pem" \
+            "/etc/httpd/ssl/*.crt" \
+            "/etc/httpd/ssl/*.pem" \
+            "/etc/letsencrypt/live/*/cert.pem" \
+            "/etc/letsencrypt/live/*/fullchain.pem"
+          do
+            ls $pattern 2>/dev/null || true
+          done | sort -u | head -50
+        executable: /bin/bash
       register: _found_certs
       changed_when: false
       failed_when: false
@@ -33,6 +36,7 @@
     - name: Filter to actual certificate files (not CA bundles)
       ansible.builtin.shell:
         cmd: |
+          set -o pipefail
           # Skip CA bundle files
           if echo "{{ item }}" | grep -qE "(ca-bundle|ca-certificates|trusted)"; then
             exit 0
@@ -41,6 +45,7 @@
           if openssl x509 -in "{{ item }}" -noout 2>/dev/null; then
             echo "{{ item }}"
           fi
+        executable: /bin/bash
       loop: "{{ _found_certs.stdout_lines | default([]) }}"
       register: _valid_certs_raw
       changed_when: false
@@ -54,28 +59,31 @@
       when: _valid_certs_raw is defined
 
     - name: Try to associate certificates with services
-      ansible.builtin.shell: |
-        cert_path="{{ item }}"
-        service=""
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          cert_path="{{ item }}"
+          service=""
 
-        # Check nginx config
-        if grep -rq "$cert_path" /etc/nginx/ 2>/dev/null; then
-          service="nginx"
-        # Check httpd/apache config
-        elif grep -rq "$cert_path" /etc/httpd/ 2>/dev/null || grep -rq "$cert_path" /etc/apache2/ 2>/dev/null; then
-          service="httpd"
-        # Check haproxy config
-        elif grep -rq "$cert_path" /etc/haproxy/ 2>/dev/null; then
-          service="haproxy"
-        # Check postfix config
-        elif grep -rq "$cert_path" /etc/postfix/ 2>/dev/null; then
-          service="postfix"
-        # Check dovecot config
-        elif grep -rq "$cert_path" /etc/dovecot/ 2>/dev/null; then
-          service="dovecot"
-        fi
+          # Check nginx config
+          if grep -rq "$cert_path" /etc/nginx/ 2>/dev/null; then
+            service="nginx"
+          # Check httpd/apache config
+          elif grep -rq "$cert_path" /etc/httpd/ 2>/dev/null || grep -rq "$cert_path" /etc/apache2/ 2>/dev/null; then
+            service="httpd"
+          # Check haproxy config
+          elif grep -rq "$cert_path" /etc/haproxy/ 2>/dev/null; then
+            service="haproxy"
+          # Check postfix config
+          elif grep -rq "$cert_path" /etc/postfix/ 2>/dev/null; then
+            service="postfix"
+          # Check dovecot config
+          elif grep -rq "$cert_path" /etc/dovecot/ 2>/dev/null; then
+            service="dovecot"
+          fi
 
-        echo "$service"
+          echo "$service"
+        executable: /bin/bash
       loop: "{{ _valid_certs.stdout_lines | default([]) }}"
       register: _cert_services
       changed_when: false

@@ -3,12 +3,16 @@
 # Discover AAP certificates in containerized deployment (podman)
 
 - name: Discover running AAP containers
-  ansible.builtin.shell: |
-    podman ps --format '{{ '{{' }}.Names{{ '}}' }}' 2>/dev/null | \
-      grep -E '^(automation-|postgresql|redis|receptor)' | \
-      sort -u
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      podman ps --format '{{ '{{' }}.Names{{ '}}' }}' 2>/dev/null | \
+        grep -E '^(automation-|postgresql|redis|receptor)' | \
+        sort -u
+    executable: /bin/bash
   register: _running_containers
   changed_when: false
+  failed_when: false
 
 - name: Display discovered containers
   ansible.builtin.debug:

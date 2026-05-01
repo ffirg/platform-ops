@@ -12,23 +12,32 @@
   when: aap_platform == 'auto'
   block:
     - name: Check for containerized AAP (podman)
-      ansible.builtin.shell: |
-        podman ps --format '{{ '{{' }}.Names{{ '}}' }}' 2>/dev/null | grep -qE '^automation-' && echo "containerized" || echo ""
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          podman ps --format '{{ '{{' }}.Names{{ '}}' }}' 2>/dev/null | grep -qE '^automation-' && echo "containerized" || echo ""
+        executable: /bin/bash
       register: _check_containerized
       changed_when: false
       failed_when: false
 
     - name: Check for OpenShift AAP
-      ansible.builtin.shell: |
-        oc get pods -n "{{ aap_namespace }}" 2>/dev/null | grep -qE 'automation-' && echo "openshift" || echo ""
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          oc get pods -n "{{ aap_namespace }}" 2>/dev/null | grep -qE 'automation-' && echo "openshift" || echo ""
+        executable: /bin/bash
       register: _check_openshift
       changed_when: false
       failed_when: false
       when: _check_containerized.stdout == ""
 
     - name: Check for Kubernetes AAP
-      ansible.builtin.shell: |
-        kubectl get pods -n "{{ aap_namespace }}" 2>/dev/null | grep -qE 'automation-' && echo "kubernetes" || echo ""
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          kubectl get pods -n "{{ aap_namespace }}" 2>/dev/null | grep -qE 'automation-' && echo "kubernetes" || echo ""
+        executable: /bin/bash
       register: _check_kubernetes
       changed_when: false
       failed_when: false
@@ -95,18 +104,21 @@
 
 # Detect AAP CA source for context
 - name: Detect if CA is installer-generated
-  ansible.builtin.shell: |
-    ca_path="{{ aap_base }}/tls/ca.cert"
-    if [ -f "$ca_path" ]; then
-      subject=$(openssl x509 -in "$ca_path" -noout -subject 2>/dev/null)
-      if echo "$subject" | grep -qE "(Red Hat|Ansible)"; then
-        echo "installer"
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      ca_path="{{ aap_base }}/tls/ca.cert"
+      if [ -f "$ca_path" ]; then
+        subject=$(openssl x509 -in "$ca_path" -noout -subject 2>/dev/null)
+        if echo "$subject" | grep -qE "(Red Hat|Ansible)"; then
+          echo "installer"
+        else
+          echo "custom"
+        fi
       else
-        echo "custom"
+        echo "missing"
       fi
-    else
-      echo "missing"
-    fi
+    executable: /bin/bash
   register: _ca_source
   changed_when: false
   failed_when: false

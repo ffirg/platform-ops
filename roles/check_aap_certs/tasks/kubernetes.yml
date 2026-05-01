@@ -3,9 +3,12 @@
 # Discover AAP certificates in Kubernetes deployment
 
 - name: Get AAP TLS secrets from Kubernetes
-  ansible.builtin.shell: |
-    kubectl get secrets -n "{{ aap_namespace }}" -o json 2>/dev/null | \
-      jq -r '.items[] | select(.type == "kubernetes.io/tls") | select(.metadata.name | test("automation|aap|controller|hub|eda|gateway")) | .metadata.name'
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      kubectl get secrets -n "{{ aap_namespace }}" -o json 2>/dev/null | \
+        jq -r '.items[] | select(.type == "kubernetes.io/tls") | select(.metadata.name | test("automation|aap|controller|hub|eda|gateway")) | .metadata.name'
+    executable: /bin/bash
   register: _tls_secrets
   changed_when: false
   failed_when: false
@@ -19,9 +22,12 @@
   when: _tls_secrets.stdout_lines | length > 0
   block:
     - name: Extract certificate from secret
-      ansible.builtin.shell: |
-        kubectl get secret "{{ item }}" -n "{{ aap_namespace }}" -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d > "/tmp/k8s_cert_{{ item }}.pem"
-        echo "/tmp/k8s_cert_{{ item }}.pem"
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          kubectl get secret "{{ item }}" -n "{{ aap_namespace }}" -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d > "/tmp/k8s_cert_{{ item }}.pem"
+          echo "/tmp/k8s_cert_{{ item }}.pem"
+        executable: /bin/bash
       loop: "{{ _tls_secrets.stdout_lines }}"
       register: _extracted_certs
       changed_when: false

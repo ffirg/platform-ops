@@ -85,10 +85,12 @@
     - name: Reset CA database
       ansible.builtin.shell:
         cmd: |
+          set -o pipefail
           cd /etc/nginx/ssl/ca
           rm -f index.txt index.txt.old index.txt.attr
           touch index.txt
           echo "$(date +%s)" > serial
+      changed_when: true
 
     - name: Generate CA key and certificate
       ansible.builtin.shell:
@@ -102,10 +104,12 @@
     - name: Generate server key and CSR
       ansible.builtin.shell:
         cmd: |
+          set -o pipefail
           cd /etc/nginx/ssl
           openssl genrsa -out server.key 2048
           openssl req -new -key server.key -out server.csr \
             -subj "/CN={{ ansible_fqdn }}/O=Test-{{ cert_scenario | capitalize }}/C=GB"
+      changed_when: true
 
     - name: Calculate certificate dates
       ansible.builtin.set_fact:
@@ -119,6 +123,7 @@
     - name: Sign certificate
       ansible.builtin.shell:
         cmd: |
+          set -o pipefail
           cd /etc/nginx/ssl
           openssl ca -batch -config ca/openssl.cnf \
             -extensions server_cert \
@@ -128,13 +133,16 @@
             -out server.crt \
             -notext
           rm -f server.csr
+      changed_when: true
 
     - name: Verify certificate
       ansible.builtin.shell:
         cmd: |
+          set -o pipefail
           openssl x509 -in /etc/nginx/ssl/server.crt -noout -dates
           openssl x509 -in /etc/nginx/ssl/server.crt -checkend 0 && echo "STATUS: VALID" || echo "STATUS: EXPIRED"
       register: verify_result
+      changed_when: false
 
     - name: Show certificate status
       ansible.builtin.debug:

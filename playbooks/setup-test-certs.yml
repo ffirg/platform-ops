@@ -13,7 +13,7 @@
       loop:
         - rhel-9-for-x86_64-baseos-rpms
         - rhel-9-for-x86_64-appstream-rpms
-      ignore_errors: true
+      failed_when: false
       changed_when: false
 
     - name: Install nginx and cockpit
@@ -76,7 +76,7 @@
         permanent: true
         state: enabled
         immediate: true
-      ignore_errors: true
+      failed_when: false
 
     - name: Open firewall for cockpit
       ansible.posix.firewalld:
@@ -84,7 +84,7 @@
         permanent: true
         state: enabled
         immediate: true
-      ignore_errors: true
+      failed_when: false
 
     - name: Display certificate locations
       ansible.builtin.debug:

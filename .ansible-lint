@@ -1,0 +1,19 @@
+# .ansible-lint
+# Configuration for ansible-lint
+
+# Skip var-naming rule for role variable prefixes
+# These roles intentionally use shared variable names (cert_*) across multiple
+# roles to allow easy configuration from playbooks without role-specific prefixes
+skip_list:
+  - var-naming[no-role-prefix]
+
+# Profile to use (basic catches most issues without being overly strict)
+profile: basic
+
+# Offline mode - don't download requirements
+offline: false
+
+# Ignore specific paths
+exclude_paths:
+  - .git/
+  - collections/

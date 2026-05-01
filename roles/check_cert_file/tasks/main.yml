@@ -37,7 +37,7 @@
       community.crypto.x509_certificate_info:
         path: "{{ cert_path }}"
       register: _cert_info
-      ignore_errors: true
+      failed_when: false
 
     - name: Handle certificate read error
       when: _cert_info is failed
@@ -122,7 +122,7 @@
             host: localhost
             port: "{{ _service_port | int }}"
           register: _live_cert
-          ignore_errors: true
+          failed_when: false
           when: _service_port is defined and _service_port | int > 0
 
         - name: Compare file and live certificates
@@ -167,7 +167,7 @@
                   - depth: 0
                     subject: "{{ _subject_str | trim }}"
                     issuer: "{{ _issuer_str | trim }}"
-              purpose: "{{ 'TLS Server' if 'serverAuth' in (_cert_info.extended_key_usage | default([]) | join(',')) else 'TLS Client' if 'clientAuth' in (_cert_info.extended_key_usage | default([]) | join(',')) else 'General' }}"
+              purpose: "{{ 'TLS Server' if 'serverAuth' in ((_cert_info.extended_key_usage | default([], true)) | join(',')) else 'TLS Client' if 'clientAuth' in ((_cert_info.extended_key_usage | default([], true)) | join(',')) else 'General' }}"
               service: "{{ cert_service | default(omit) }}"
               source: "{{ _cert_source }}"
               service_verified: "{{ _service_verified | default(false) }}"
