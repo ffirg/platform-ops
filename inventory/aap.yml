@@ -6,10 +6,7 @@
 # Source: https://carmaap1.lan/api/gateway/v1/service_nodes/
 #
 # To regenerate:
-#   ansible-playbook playbooks/discover-aap-inventory.yml
-#
-# Or use the dynamic inventory instead:
-#   ansible-playbook playbooks/check-aap-certs.yml -i plugins/inventory/aap_gateway.py
+#   ansible-playbook playbooks/discover-aap-inventory.yml -e discovery_mode=write_file
 
 all:
   children:
