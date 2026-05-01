@@ -4,6 +4,13 @@ Automated certificate lifecycle management for enterprise infrastructure. Monito
 
 Built for Red Hat Ansible Automation Platform (AAP) with support for containerized, OpenShift, and Kubernetes deployments.
 
+## Getting Started
+
+```bash
+git clone https://github.com/ffirg/platform-ops.git
+cd platform-ops
+```
+
 ## AAP Seeding
 
 Bootstrap AAP with the Platform Ops project and job templates:
@@ -67,22 +74,22 @@ Extensible certificate checking for any server, with specialized support for Red
 ### Quick Start
 
 ```bash
-# Clone the repo
-git clone https://github.com/ffirg/platform-ops.git
-cd platform-ops
-
 # Check certificates on a server (auto-discovery)
 ansible-playbook playbooks/check-certs.yml -i myserver.example.com,
 
-# Check AAP certificates
+# Check certificates with explicit file paths
+ansible-playbook playbooks/check-certs.yml -i myserver.example.com, \
+  -e '{"cert_checks": [{"name": "Nginx", "type": "file", "path": "/etc/nginx/ssl/server.crt"}]}'
+
+# Check AAP certificates (requires AAP host with podman/oc/kubectl)
 ansible-playbook playbooks/check-aap-certs.yml -i aap.example.com,
 
-# Generate test certificates with different expiry scenarios
-ansible-playbook playbooks/setup-test-certs.yml -i testserver.example.com,
+# Generate test certificates (requires become/sudo)
+ansible-playbook playbooks/setup-test-certs.yml -i testserver.example.com, -K
 
-# Test certificate expiry detection (ok, warning, critical, expired)
+# Test certificate expiry scenarios: ok, warning, critical, expired (requires become/sudo)
 ansible-playbook playbooks/test-cert-expiry.yml -i testserver.example.com, \
-  -e "cert_scenario=warning"
+  -e "cert_scenario=warning" -K
 ```
 
 ### Features
