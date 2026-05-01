@@ -1,0 +1,137 @@
+---
+# playbooks/discover-aap-inventory.yml
+# Discover AAP infrastructure from Gateway API and generate static inventory
+#
+# This playbook queries the AAP Gateway API to discover all service nodes
+# and generates inventory/aap.yml with proper grouping.
+#
+# Credentials are retrieved from macOS Keychain (preferred) or environment variables.
+#
+# Usage:
+#   ansible-playbook playbooks/discover-aap-inventory.yml
+#
+# Output:
+#   inventory/aap.yml - Static inventory file with discovered AAP hosts
+
+- name: Discover AAP Infrastructure from Gateway API
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # AAP Connection - keychain lookup with env fallback
+    _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null', errors='ignore') }}"
+    _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null', errors='ignore') }}"
+    _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null', errors='ignore') }}"
+
+    aap_hostname: "{{ _keychain_host | default(lookup('env', 'AAP_HOST'), true) | mandatory }}"
+    aap_username: "{{ _keychain_user | default(lookup('env', 'AAP_USERNAME'), true) | mandatory }}"
+    aap_password: "{{ _keychain_pass | default(lookup('env', 'AAP_PASSWORD'), true) | mandatory }}"
+    aap_validate_certs: false
+
+    # Output file
+    inventory_output: "{{ playbook_dir }}/../inventory/aap.yml"
+
+  tasks:
+    - name: Query Gateway API for service types
+      ansible.builtin.uri:
+        url: "https://{{ aap_hostname }}/api/gateway/v1/service_types/"
+        method: GET
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_validate_certs }}"
+        return_content: true
+      register: _service_types
+
+    - name: Query Gateway API for service nodes
+      ansible.builtin.uri:
+        url: "https://{{ aap_hostname }}/api/gateway/v1/service_nodes/"
+        method: GET
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_validate_certs }}"
+        return_content: true
+      register: _service_nodes
+
+    - name: Build service type mapping
+      ansible.builtin.set_fact:
+        service_type_map: "{{ dict(_service_types.json.results | map(attribute='id') | zip(_service_types.json.results | map(attribute='name'))) }}"
+
+    - name: Process discovered nodes
+      ansible.builtin.set_fact:
+        discovered_nodes: >-
+          {{
+            _service_nodes.json.results | map(attribute='address') | unique | list
+          }}
+        nodes_by_service: >-
+          {{
+            _service_nodes.json.results
+            | groupby(attribute='summary_fields.service_cluster.service_type')
+            | map('last')
+            | map('map', attribute='address')
+            | map('unique')
+            | map('list')
+            | list
+          }}
+        service_ids: >-
+          {{
+            _service_nodes.json.results
+            | groupby(attribute='summary_fields.service_cluster.service_type')
+            | map('first')
+            | list
+          }}
+
+    - name: Build host services mapping
+      ansible.builtin.set_fact:
+        host_services: >-
+          {{
+            dict(
+              discovered_nodes | map('community.general.dict_kv', 'host')
+              | map('combine', {'services': []})
+              | map(attribute='host')
+              | zip(
+                  discovered_nodes | map('extract',
+                    dict(_service_nodes.json.results | groupby('address') | map('last')
+                    | map('map', attribute='summary_fields.service_cluster.service_type')
+                    | map('map', 'extract', service_type_map)
+                    | map('list')
+                    | zip(_service_nodes.json.results | groupby('address') | map('first'))
+                    | map('reverse') | map('list'))
+                  )
+                )
+            )
+          }}
+
+    - name: Display discovered infrastructure
+      ansible.builtin.debug:
+        msg: |
+          Discovered AAP Infrastructure:
+          ═══════════════════════════════════════════════════════════════
+          Gateway: {{ aap_hostname }}
+          Service Types: {{ service_type_map.values() | list | join(', ') }}
+
+          Hosts:
+          {% for node in _service_nodes.json.results %}
+            - {{ node.address }} ({{ service_type_map[node.summary_fields.service_cluster.service_type] }})
+          {% endfor %}
+          ═══════════════════════════════════════════════════════════════
+
+    - name: Generate static inventory file
+      ansible.builtin.template:
+        src: aap_inventory.yml.j2
+        dest: "{{ inventory_output }}"
+        mode: "0644"
+
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: |
+
+          Inventory generated: {{ inventory_output }}
+
+          Usage:
+            ansible-playbook playbooks/check-aap-certs.yml -i inventory/aap.yml
+
+          Or use the dynamic inventory:
+            ansible-playbook playbooks/check-aap-certs.yml -i plugins/inventory/aap_gateway.py
