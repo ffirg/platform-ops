@@ -13,7 +13,7 @@
 #   ansible-playbook playbooks/discover-aap-inventory.yml -e discovery_mode=commit_repo
 #
 # AAP job template usage:
-#   - Pass aap_host, aap_user, aap_pass as extra vars
+#   - Pass aap_hostname, aap_username, aap_password as extra vars
 #   - Set discovery_mode as needed (report, update_aap, or commit_repo)
 #   - For commit_repo: ensure git credentials are available
 #
@@ -33,9 +33,9 @@
     _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null || true', errors='ignore') }}"
     _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null || true', errors='ignore') }}"
 
-    aap_hostname: "{{ aap_host | default(_keychain_host, true) | default(lookup('env', 'AAP_HOST'), true) | mandatory }}"
-    aap_username: "{{ aap_user | default(_keychain_user, true) | default(lookup('env', 'AAP_USERNAME'), true) | mandatory }}"
-    aap_password: "{{ aap_pass | default(_keychain_pass, true) | default(lookup('env', 'AAP_PASSWORD'), true) | mandatory }}"
+    aap_hostname: "{{ _keychain_host | default(lookup('env', 'AAP_HOST'), true) | mandatory }}"
+    aap_username: "{{ _keychain_user | default(lookup('env', 'AAP_USERNAME'), true) | mandatory }}"
+    aap_password: "{{ _keychain_pass | default(lookup('env', 'AAP_PASSWORD'), true) | mandatory }}"
     aap_validate_certs: false
 
     # Discovery mode: report, write_file, update_aap, commit_repo
