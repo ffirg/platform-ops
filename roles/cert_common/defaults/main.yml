@@ -2,6 +2,18 @@
 # roles/cert_common/defaults/main.yml
 # Shared defaults for all certificate checking roles
 
+# OS-aware CA bundle path (use ansible_os_family fact)
+# RedHat: /etc/pki/tls/certs/ca-bundle.crt
+# Debian: /etc/ssl/certs/ca-certificates.crt
+# Darwin: /etc/ssl/cert.pem
+cert_ca_bundle_path: >-
+  {{
+    '/etc/pki/tls/certs/ca-bundle.crt' if ansible_os_family == 'RedHat' else
+    '/etc/ssl/certs/ca-certificates.crt' if ansible_os_family == 'Debian' else
+    '/etc/ssl/cert.pem' if ansible_os_family == 'Darwin' else
+    '/etc/ssl/certs/ca-certificates.crt'
+  }}
+
 # Thresholds
 cert_warning_days: 30
 cert_critical_days: 14
