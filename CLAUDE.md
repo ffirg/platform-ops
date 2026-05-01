@@ -7,12 +7,13 @@ Ansible roles and playbooks for platform operations, including certificate check
 Use macOS keychain with `aap-credentials` service for AAP access:
 
 ```bash
+AAP_HOST=$(security find-generic-password -s "aap-credentials" -a "aap-hostname" -w)
 AAP_USER=$(security find-generic-password -s "aap-credentials" -a "aap-username" -w)
 AAP_PASS=$(security find-generic-password -s "aap-credentials" -a "aap-password" -w)
-curl -sk -u "${AAP_USER}:${AAP_PASS}" "https://carmaap1.lan/api/controller/v2/..."
+curl -sk -u "${AAP_USER}:${AAP_PASS}" "https://${AAP_HOST}/api/controller/v2/..."
 ```
 
-Always prefix AAP API commands with these credential lookups.
+Always prefix AAP API commands with these credential lookups. Never hardcode hostnames or credentials.
 
 ## API Paths
 

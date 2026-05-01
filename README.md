@@ -2,6 +2,33 @@
 
 Ansible roles for platform operations - certificate management, infrastructure checks, and operational automation.
 
+## Prerequisites
+
+### macOS Keychain Setup (Recommended)
+
+Store AAP credentials securely in macOS Keychain:
+
+```bash
+# Add credentials (one-time setup)
+security add-generic-password -s "aap-credentials" -a "aap-hostname" -w "your-aap-host.example.com"
+security add-generic-password -s "aap-credentials" -a "aap-username" -w "admin"
+security add-generic-password -s "aap-credentials" -a "aap-password" -w "yourpassword"
+
+# Verify
+security find-generic-password -s "aap-credentials" -a "aap-username" -w
+```
+
+Playbooks automatically retrieve credentials from keychain, with environment variables as fallback.
+
+### Target Host Requirements
+
+For `community.crypto` modules, install on target hosts:
+
+```bash
+dnf install python3-cryptography    # RHEL/CentOS/Fedora
+apt install python3-cryptography    # Debian/Ubuntu
+```
+
 ## Certificate Checking
 
 Extensible certificate checking for any server, with specialized support for Red Hat Ansible Automation Platform (AAP).
@@ -161,8 +188,38 @@ SUMMARY: Total=2 | OK=1 | Warning=1 | Critical=0 | Expired=0 | Missing=0
 ### Requirements
 
 - Ansible 2.9+
-- OpenSSL on target hosts
+- `community.crypto` collection
+- `python3-cryptography` on target hosts
 - For AAP: podman (containerized), oc (OpenShift), or kubectl (Kubernetes)
+
+## AAP Seeding
+
+Bootstrap AAP with the Platform Ops project and job templates:
+
+```bash
+# Using keychain credentials (recommended)
+ansible-playbook playbooks/seed-aap.yml
+
+# Or with environment variables
+export CONTROLLER_HOST=your-aap-host.example.com
+export CONTROLLER_USERNAME=admin
+export CONTROLLER_PASSWORD=yourpassword
+ansible-playbook playbooks/seed-aap.yml
+```
+
+This creates:
+- **Project**: Platform Ops (linked to this GitHub repo)
+- **Inventory**: Platform Ops - Localhost
+- **Job Templates**: Check Server Certificates, Check AAP Certificates
+
+### Requirements
+
+- `infra.aap_configuration` collection
+- AAP credentials in keychain or environment variables
+
+## Testing
+
+See [docs/certificate-check-test-plan.md](docs/certificate-check-test-plan.md) for the certificate checking test plan and execution log.
 
 ## License
 
