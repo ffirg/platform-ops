@@ -23,7 +23,7 @@
       Authorization: "Bearer {{ aap_token }}"
     validate_certs: "{{ aap_validate_certs }}"
     return_content: true
-  register: _service_types
+  register: _service_types_token
   when: _use_token_auth
 
 - name: Query Gateway API for service types (basic auth)
@@ -35,7 +35,7 @@
     force_basic_auth: true
     validate_certs: "{{ aap_validate_certs }}"
     return_content: true
-  register: _service_types
+  register: _service_types_basic
   when: not _use_token_auth
 
 - name: Query Gateway API for service nodes (token auth)
@@ -46,7 +46,7 @@
       Authorization: "Bearer {{ aap_token }}"
     validate_certs: "{{ aap_validate_certs }}"
     return_content: true
-  register: _service_nodes
+  register: _service_nodes_token
   when: _use_token_auth
 
 - name: Query Gateway API for service nodes (basic auth)
@@ -58,8 +58,13 @@
     force_basic_auth: true
     validate_certs: "{{ aap_validate_certs }}"
     return_content: true
-  register: _service_nodes
+  register: _service_nodes_basic
   when: not _use_token_auth
+
+- name: Set unified result variables
+  ansible.builtin.set_fact:
+    _service_types: "{{ _service_types_token if _use_token_auth else _service_types_basic }}"
+    _service_nodes: "{{ _service_nodes_token if _use_token_auth else _service_nodes_basic }}"
 
 - name: Build service type mapping
   ansible.builtin.set_fact:
