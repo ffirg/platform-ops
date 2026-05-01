@@ -118,11 +118,7 @@ curl -sk -u "${AAP_USER}:${AAP_PASS}" \
 
 | Date | Scenario | Result | Job IDs |
 |------|----------|--------|---------|
-| 2026-05-01 | OK | PASS | 405, 407 |
-| 2026-05-01 | WARNING | PASS | 409, 411 |
-| 2026-05-01 | CRITICAL | PASS | 413, 415 |
-| 2026-05-01 | EXPIRED | PASS | 417, 419 |
-| 2026-05-01 | OK | PASS | 423, 425 |
-| 2026-05-01 | WARNING | PASS | 427, 429 |
-| 2026-05-01 | CRITICAL | PASS | 431, 433 |
-| 2026-05-01 | EXPIRED | PASS | 435, 437 |
+| 2026-05-01 | OK | PASS | 498, 500 |
+| 2026-05-01 | WARNING | PASS | 502, 504 |
+| 2026-05-01 | CRITICAL | PASS | 506, 508 |
+| 2026-05-01 | EXPIRED | PASS | 510, 512 |
