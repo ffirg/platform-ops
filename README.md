@@ -127,6 +127,13 @@ ansible-playbook playbooks/test-cert-expiry.yml -i testserver.example.com, \
 | `cert_report` | Generate reports (console, markdown, JSON) |
 | `cert_common` | Shared defaults and variables |
 
+### Inventories
+
+| Inventory | Description |
+|-----------|-------------|
+| `aap_gateway.py` | Dynamic inventory - discovers AAP nodes via Gateway API |
+| `aap.yml` | Static inventory template for AAP infrastructure |
+
 ### Usage Examples
 
 #### Check all certificates on a server (auto-discovery)
@@ -151,13 +158,15 @@ cert_checks:
 #### Check AAP certificates
 
 ```bash
-# Auto-detect platform
-ansible-playbook playbooks/check-aap-certs.yml -i aap.example.com,
+# Using dynamic inventory (discovers nodes from Gateway API)
+ansible-playbook playbooks/check-aap-certs.yml -i inventory/aap_gateway.py
 
-# Specify platform
+# Or specify a single host
 ansible-playbook playbooks/check-aap-certs.yml -i aap.example.com, \
   -e "aap_platform=containerized"
 ```
+
+The dynamic inventory queries the AAP Gateway API to discover all service nodes and groups them by type (gateway, controller, hub, eda). Requires keychain credentials configured.
 
 ### Output Formats
 
