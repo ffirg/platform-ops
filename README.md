@@ -67,6 +67,7 @@ ansible-playbook playbooks/seed-aap.yml
 
 This creates:
 - **Project**: Platform Ops (linked to this GitHub repo)
+- **Credential**: Platform Ops Machine (SSH credential placeholder)
 - **Inventories**:
   - Platform Ops (managed nodes for certificate testing)
   - Platform Ops - AAP (AAP infrastructure hosts)
@@ -76,7 +77,14 @@ This creates:
   - `platform-ops | Setup Test Certs`
   - `platform-ops | Test Certificate Expiry`
 
-**Note**: Job templates require machine credentials to be added manually via the AAP UI or API after seeding.
+### First-Time Setup
+
+After seeding, you must configure the SSH credential for job templates to connect to target hosts:
+
+1. Navigate to **Resources → Credentials** in AAP
+2. Edit the **Platform Ops Machine** credential
+3. Add your SSH private key or password
+4. Optionally update **Resources → Inventories → Platform Ops** with your target hosts
 
 ## Certificate Checking
 

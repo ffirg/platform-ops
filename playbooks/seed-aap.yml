@@ -82,6 +82,16 @@
       - name: "aap-mgd-node-1.lan"
         inventory: "Platform Ops"
 
+    # Credentials - placeholder machine credential for SSH access
+    # First-time users must update this credential in AAP with valid SSH key/password
+    controller_credentials:
+      - name: "Platform Ops Machine"
+        organization: "Default"
+        credential_type: "Machine"
+        description: "SSH credential for Platform Ops managed nodes - UPDATE WITH VALID SSH KEY"
+        inputs:
+          username: "root"
+
     # Job Templates - prefix with repo name for clarity
     controller_templates:
       - name: "platform-ops | Check Server Certificates"
@@ -89,6 +99,8 @@
         project: "Platform Ops"
         playbook: "playbooks/check-certs.yml"
         inventory: "Platform Ops"
+        credentials:
+          - "Platform Ops Machine"
         ask_variables_on_launch: true
 
       - name: "platform-ops | Check AAP Certificates"
@@ -96,6 +108,8 @@
         project: "Platform Ops"
         playbook: "playbooks/check-aap-certs.yml"
         inventory: "Platform Ops - AAP"
+        credentials:
+          - "Platform Ops Machine"
         ask_variables_on_launch: true
 
       - name: "platform-ops | Setup Test Certs"
@@ -103,6 +117,8 @@
         project: "Platform Ops"
         playbook: "playbooks/setup-test-certs.yml"
         inventory: "Platform Ops"
+        credentials:
+          - "Platform Ops Machine"
         ask_variables_on_launch: true
 
       - name: "platform-ops | Test Certificate Expiry"
@@ -110,6 +126,8 @@
         project: "Platform Ops"
         playbook: "playbooks/test-cert-expiry.yml"
         inventory: "Platform Ops"
+        credentials:
+          - "Platform Ops Machine"
         ask_variables_on_launch: true
         extra_vars:
           cert_scenario: expired
@@ -119,6 +137,7 @@
     - infra.aap_configuration.controller_projects
     - infra.aap_configuration.controller_inventories
     - infra.aap_configuration.controller_hosts
+    - infra.aap_configuration.controller_credentials
     - infra.aap_configuration.controller_job_templates
 
   post_tasks:
@@ -131,13 +150,16 @@
             - Project: Platform Ops
             - Inventory: Platform Ops (managed nodes for certificate testing)
             - Inventory: Platform Ops - AAP (dynamically discovered via Gateway API)
+            - Credential: Platform Ops Machine (SSH credential)
             - Job Template: platform-ops | Check Server Certificates
             - Job Template: platform-ops | Check AAP Certificates
             - Job Template: platform-ops | Setup Test Certs
             - Job Template: platform-ops | Test Certificate Expiry
 
-          Note: Job templates require machine credentials to be added
-          manually via the AAP UI or API after seeding.
+          IMPORTANT: First-time setup required!
+            1. Edit the "Platform Ops Machine" credential in AAP
+            2. Add your SSH private key or password for target host access
+            3. Update inventory hosts to match your environment
 
           Test certificate scenarios:
             ansible-playbook playbooks/test-cert-expiry.yml -e cert_scenario=ok
