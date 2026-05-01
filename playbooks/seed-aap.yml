@@ -90,8 +90,6 @@
         playbook: "playbooks/check-certs.yml"
         inventory: "Platform Ops"
         ask_variables_on_launch: true
-        extra_vars:
-          cert_checks: []
 
       - name: "platform-ops | Check AAP Certificates"
         organization: "Default"
