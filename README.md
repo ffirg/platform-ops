@@ -1,6 +1,37 @@
 # platform-ops
 
-Ansible roles for platform operations - certificate management, infrastructure checks, and operational automation.
+Automated certificate lifecycle management for enterprise infrastructure. Monitors SSL/TLS certificates across servers, detects expiring or expired certificates, and provides structured JSON output for integration with monitoring dashboards and self-service portals.
+
+Built for Red Hat Ansible Automation Platform (AAP) with support for containerized, OpenShift, and Kubernetes deployments.
+
+## AAP Seeding
+
+Bootstrap AAP with the Platform Ops project and job templates:
+
+```bash
+# Using keychain credentials (recommended)
+ansible-playbook playbooks/seed-aap.yml
+
+# Or with environment variables
+export AAP_HOST=your-aap-host.example.com
+export AAP_USERNAME=admin
+export AAP_PASSWORD=yourpassword
+ansible-playbook playbooks/seed-aap.yml
+```
+
+This creates:
+- **Project**: Platform Ops (linked to this GitHub repo)
+- **Inventory**: Platform Ops (host: aap-mgd-node-1.lan)
+- **Job Templates**:
+  - `platform-ops | Check Server Certificates`
+  - `platform-ops | Check AAP Certificates`
+  - `platform-ops | Setup Test Certs`
+  - `platform-ops | Test Certificate Expiry`
+
+### Requirements
+
+- `infra.aap_configuration` collection
+- AAP credentials in keychain or environment variables
 
 ## Prerequisites
 
@@ -40,34 +71,46 @@ Extensible certificate checking for any server, with specialized support for Red
 git clone https://github.com/ffirg/platform-ops.git
 cd platform-ops
 
-# Check certificates on any server (auto-discovery)
-ansible-playbook playbooks/check-certs.yml -i inventory/example.yml
-
-# Check specific certificates
-ansible-playbook playbooks/check-certs.yml -i localhost, \
-  -e '{"cert_checks": [{"name": "GitHub", "type": "remote", "host": "github.com", "port": 443}]}'
+# Check certificates on a server (auto-discovery)
+ansible-playbook playbooks/check-certs.yml -i myserver.example.com,
 
 # Check AAP certificates
-ansible-playbook playbooks/check-aap-certs.yml -i aap-inventory.yml
+ansible-playbook playbooks/check-aap-certs.yml -i aap.example.com,
+
+# Generate test certificates with different expiry scenarios
+ansible-playbook playbooks/setup-test-certs.yml -i testserver.example.com,
+
+# Test certificate expiry detection (ok, warning, critical, expired)
+ansible-playbook playbooks/test-cert-expiry.yml -i testserver.example.com, \
+  -e "cert_scenario=warning"
 ```
 
 ### Features
 
 - **Auto-discovery**: Finds certificates automatically if no explicit paths provided
 - **File-based checking**: Check certificate files on hosts via SSH
-- **Remote TLS checking**: Check remote endpoints via TLS handshake (no SSH needed)
 - **Certificate chain tracking**: Full chain information including root CA and intermediates
 - **Multiple output formats**: Console, Markdown, JSON (for API/portal integration)
 - **AAP-specific support**: Automatic discovery of AAP components (containerized, OpenShift, Kubernetes)
+- **Configurable thresholds**: Warning and critical day thresholds for expiry alerts
+
+### Playbooks
+
+| Playbook | Description |
+|----------|-------------|
+| `check-certs.yml` | Generic certificate checking with auto-discovery |
+| `check-aap-certs.yml` | AAP-specific certificate discovery and checking |
+| `setup-test-certs.yml` | Generate test certificates on target hosts |
+| `test-cert-expiry.yml` | Create certificates with specific expiry scenarios |
+| `seed-aap.yml` | Bootstrap AAP with project and job templates |
 
 ### Roles
 
 | Role | Description |
 |------|-------------|
-| `check_server_certs` | Generic certificate checking with auto-discovery |
+| `check_server_certs` | Orchestrates certificate checking with auto-discovery |
 | `check_aap_certs` | AAP-specific certificate discovery and checking |
 | `check_cert_file` | Check a single certificate file |
-| `check_cert_remote` | Check a certificate via TLS handshake |
 | `cert_report` | Generate reports (console, markdown, JSON) |
 | `cert_common` | Shared defaults and variables |
 
@@ -90,20 +133,6 @@ cert_checks:
   - name: "PostgreSQL TLS"
     type: file
     path: /var/lib/pgsql/data/server.crt
-```
-
-#### Check remote TLS endpoints
-
-```yaml
-cert_checks:
-  - name: "Production API"
-    type: remote
-    host: api.example.com
-    port: 443
-  - name: "Load Balancer"
-    type: remote
-    host: lb.example.com
-    port: 8443
 ```
 
 #### Check AAP certificates
@@ -139,10 +168,20 @@ SUMMARY: Total=2 | OK=1 | Warning=1 | Critical=0 | Expired=0 | Missing=0
 
 #### JSON Output (for API/Portal Integration)
 
+The playbook outputs structured JSON that can be consumed by external services such as:
+
+- **Self-Service Portals**: Display certificate status in user dashboards
+- **Monitoring Systems**: Feed certificate data into Prometheus, Grafana, or Splunk
+- **CMDB Integration**: Update configuration management databases with certificate inventory
+- **Alerting Pipelines**: Trigger notifications via webhooks or message queues
+- **Compliance Reporting**: Generate audit-ready certificate inventory reports
+
+The JSON is output as a single line prefixed with `CERT_REPORT_JSON=` for easy parsing:
+
 ```json
 {
   "host": "server1.example.com",
-  "platform": "linux",
+  "platform": "Linux",
   "checkDate": "2026-04-30T10:00:00Z",
   "thresholds": {
     "warningDays": 30,
@@ -159,13 +198,25 @@ SUMMARY: Total=2 | OK=1 | Warning=1 | Critical=0 | Expired=0 | Missing=0
   "certificates": [
     {
       "name": "Nginx SSL",
+      "path": "/etc/nginx/ssl/server.crt",
+      "type": "file",
       "status": "ok",
       "days_remaining": 145,
+      "expiry_date": "20260922100000Z",
+      "subject": "server1.example.com",
+      "issuer": "R3",
+      "serial": "123456789",
+      "key_algorithm": "RSA",
+      "key_size": 2048,
+      "sig_algorithm": "sha256WithRSAEncryption",
       "chain": {
         "depth": 3,
         "root_ca": "ISRG Root X1",
-        "is_self_signed": false
-      }
+        "is_self_signed": false,
+        "chain_valid": true
+      },
+      "service": "nginx",
+      "source": "Let's Encrypt"
     }
   ]
 }
@@ -191,31 +242,6 @@ SUMMARY: Total=2 | OK=1 | Warning=1 | Critical=0 | Expired=0 | Missing=0
 - `community.crypto` collection
 - `python3-cryptography` on target hosts
 - For AAP: podman (containerized), oc (OpenShift), or kubectl (Kubernetes)
-
-## AAP Seeding
-
-Bootstrap AAP with the Platform Ops project and job templates:
-
-```bash
-# Using keychain credentials (recommended)
-ansible-playbook playbooks/seed-aap.yml
-
-# Or with environment variables
-export CONTROLLER_HOST=your-aap-host.example.com
-export CONTROLLER_USERNAME=admin
-export CONTROLLER_PASSWORD=yourpassword
-ansible-playbook playbooks/seed-aap.yml
-```
-
-This creates:
-- **Project**: Platform Ops (linked to this GitHub repo)
-- **Inventory**: Platform Ops - Localhost
-- **Job Templates**: Check Server Certificates, Check AAP Certificates
-
-### Requirements
-
-- `infra.aap_configuration` collection
-- AAP credentials in keychain or environment variables
 
 ## Testing
 

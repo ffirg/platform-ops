@@ -13,9 +13,9 @@
 #   ansible-playbook playbooks/seed-aap.yml
 #
 # Or with environment variables (fallback):
-#   export CONTROLLER_HOST=carmaap1.lan
-#   export CONTROLLER_USERNAME=admin
-#   export CONTROLLER_PASSWORD=yourpassword
+#   export AAP_HOST=carmaap1.lan
+#   export AAP_USERNAME=admin
+#   export AAP_PASSWORD=yourpassword
 #   ansible-playbook playbooks/seed-aap.yml
 
 - name: Seed AAP with Platform-Ops Project and Job Templates
@@ -31,9 +31,9 @@
     _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null', errors='ignore') }}"
 
     # Use keychain if available, else env, else fail
-    aap_hostname: "https://{{ _keychain_host | default(lookup('env', 'CONTROLLER_HOST'), true) | mandatory }}"
-    aap_username: "{{ _keychain_user | default(lookup('env', 'CONTROLLER_USERNAME'), true) | mandatory }}"
-    aap_password: "{{ _keychain_pass | default(lookup('env', 'CONTROLLER_PASSWORD'), true) | mandatory }}"
+    aap_hostname: "https://{{ _keychain_host | default(lookup('env', 'AAP_HOST'), true) | mandatory }}"
+    aap_username: "{{ _keychain_user | default(lookup('env', 'AAP_USERNAME'), true) | mandatory }}"
+    aap_password: "{{ _keychain_pass | default(lookup('env', 'AAP_PASSWORD'), true) | mandatory }}"
     aap_validate_certs: false
 
     # Controller collection compatibility aliases
