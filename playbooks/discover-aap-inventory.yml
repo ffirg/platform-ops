@@ -5,13 +5,18 @@
 # This playbook queries the AAP Gateway API to discover all service nodes
 # and generates inventory/aap.yml with proper grouping.
 #
-# Credentials are retrieved from macOS Keychain (preferred) or environment variables.
-#
-# Usage:
+# Local usage (macOS with keychain):
 #   ansible-playbook playbooks/discover-aap-inventory.yml
 #
+# AAP job template usage:
+#   - Provide aap_hostname, aap_username, aap_password as extra vars
+#   - Or use AAP credential injection via environment variables
+#   - Set write_inventory_file: false (execution environment is ephemeral)
+#
 # Output:
-#   inventory/aap.yml - Static inventory file with discovered AAP hosts
+#   - Console: Discovered infrastructure summary
+#   - JSON: AAP_INVENTORY_JSON= line for parsing
+#   - File: inventory/aap.yml (when write_inventory_file: true)
 
 - name: Discover AAP Infrastructure from Gateway API
   hosts: localhost
@@ -19,17 +24,21 @@
   gather_facts: false
 
   vars:
-    # AAP Connection - keychain lookup with env fallback
-    _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null', errors='ignore') }}"
-    _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null', errors='ignore') }}"
-    _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null', errors='ignore') }}"
+    # AAP Connection - try keychain first (macOS), then env vars, then extra vars
+    # Keychain lookup fails silently on non-macOS systems
+    _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null || true', errors='ignore') }}"
+    _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null || true', errors='ignore') }}"
+    _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null || true', errors='ignore') }}"
 
-    aap_hostname: "{{ _keychain_host | default(lookup('env', 'AAP_HOST'), true) | mandatory }}"
-    aap_username: "{{ _keychain_user | default(lookup('env', 'AAP_USERNAME'), true) | mandatory }}"
-    aap_password: "{{ _keychain_pass | default(lookup('env', 'AAP_PASSWORD'), true) | mandatory }}"
+    # Priority: extra vars (gateway_*) > keychain > environment
+    # When running in AAP, pass gateway_host, gateway_user, gateway_pass as extra vars
+    aap_hostname: "{{ gateway_host | default(_keychain_host, true) | default(lookup('env', 'AAP_HOST'), true) | mandatory }}"
+    aap_username: "{{ gateway_user | default(_keychain_user, true) | default(lookup('env', 'AAP_USERNAME'), true) | mandatory }}"
+    aap_password: "{{ gateway_pass | default(_keychain_pass, true) | default(lookup('env', 'AAP_PASSWORD'), true) | mandatory }}"
     aap_validate_certs: false
 
-    # Output file
+    # Output options
+    write_inventory_file: true
     inventory_output: "{{ playbook_dir }}/../inventory/aap.yml"
 
   tasks:
@@ -118,16 +127,35 @@
           {% endfor %}
           ═══════════════════════════════════════════════════════════════
 
+    - name: Build inventory JSON for output
+      ansible.builtin.set_fact:
+        inventory_json:
+          _meta:
+            hostvars: "{{ dict(discovered_nodes | zip(discovered_nodes | map('extract', host_services) | map('community.general.dict_kv', 'aap_services') | map('combine', {'aap_platform': 'containerized'}))) }}"
+          all:
+            children: "{{ ['aap_all'] }}"
+          aap_all:
+            hosts: "{{ discovered_nodes }}"
+            vars:
+              cert_warning_days: 30
+              cert_critical_days: 14
+            children: "{{ service_ids | map('extract', service_type_map) | map('regex_replace', '^', 'aap_') | list }}"
+
+    - name: Output inventory JSON for AAP job capture
+      ansible.builtin.debug:
+        msg: "AAP_INVENTORY_JSON={{ inventory_json | to_json }}"
+
     - name: Generate static inventory file
       ansible.builtin.template:
         src: aap_inventory.yml.j2
         dest: "{{ inventory_output }}"
         mode: "0644"
+      when: write_inventory_file | bool
 
     - name: Display completion message
       ansible.builtin.debug:
         msg: |
-
+          {% if write_inventory_file | bool %}
           Inventory generated: {{ inventory_output }}
 
           Usage:
@@ -135,3 +163,7 @@
 
           Or use the dynamic inventory:
             ansible-playbook playbooks/check-aap-certs.yml -i plugins/inventory/aap_gateway.py
+          {% else %}
+          Discovery complete. JSON output above can be parsed with:
+            grep 'AAP_INVENTORY_JSON=' | cut -d= -f2- | jq .
+          {% endif %}
