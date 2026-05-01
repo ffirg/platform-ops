@@ -2,24 +2,57 @@
 # playbooks/check-aap-certs.yml
 # AAP-specific certificate checking playbook
 #
-# Usage:
-#   # Auto-detect platform and check all AAP certificates
-#   ansible-playbook playbooks/check-aap-certs.yml -i aap-inventory.yml
+# This playbook can work two ways:
+#   1. With pre-defined inventory: provide hosts via -i inventory/aap.yml
+#   2. With dynamic discovery: run against localhost with AAP credentials
 #
-#   # Specify platform explicitly
-#   ansible-playbook playbooks/check-aap-certs.yml -i aap-inventory.yml \
-#     -e "aap_platform=containerized"
+# Usage with inventory:
+#   ansible-playbook playbooks/check-aap-certs.yml -i inventory/aap.yml
 #
-#   # Generate report file
-#   ansible-playbook playbooks/check-aap-certs.yml -i aap-inventory.yml \
-#     -e "cert_report_file=/tmp/aap-cert-report.md"
+# Usage with dynamic discovery (local):
+#   ansible-playbook playbooks/check-aap-certs.yml
 #
-#   # Custom AAP base path
-#   ansible-playbook playbooks/check-aap-certs.yml -i aap-inventory.yml \
-#     -e "aap_base=/opt/aap"
+# Usage in AAP job template:
+#   - Set inventory to "Platform Ops - AAP" (or any inventory with localhost)
+#   - Pass aap_hostname, aap_username, aap_password as extra vars
+#   - The playbook will discover nodes and check certificates
+#
+# Options:
+#   -e "aap_platform=containerized"     # Platform: auto, containerized, openshift, kubernetes
+#   -e "cert_report_file=/tmp/report.md"  # Save markdown report
+#   -e "cert_fail_on_critical=true"     # Fail if critical certs found
 
+# =============================================================================
+# Play 1: Discover AAP nodes from Gateway API
+# =============================================================================
+- name: Discover AAP Nodes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # Keychain lookups for local execution
+    _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null || true', errors='ignore') }}"
+    _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null || true', errors='ignore') }}"
+    _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null || true', errors='ignore') }}"
+
+    # AAP connection - keychain with env fallback
+    aap_hostname: "{{ _keychain_host | default(lookup('env', 'AAP_HOST'), true) }}"
+    aap_username: "{{ _keychain_user | default(lookup('env', 'AAP_USERNAME'), true) }}"
+    aap_password: "{{ _keychain_pass | default(lookup('env', 'AAP_PASSWORD'), true) }}"
+
+  roles:
+    - role: discover_aap_nodes
+      when:
+        - aap_hostname | length > 0
+        - aap_username | length > 0
+        - aap_password | length > 0
+
+# =============================================================================
+# Play 2: Check certificates on discovered AAP nodes
+# =============================================================================
 - name: Check AAP Certificates
-  hosts: all
+  hosts: aap_all
   gather_facts: true
 
   vars:

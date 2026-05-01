@@ -1,21 +1,21 @@
 ---
 # playbooks/discover-aap-inventory.yml
-# Discover AAP infrastructure from Gateway API
+# Discover AAP infrastructure from Gateway API and optionally persist
 #
 # Discovery modes (set via discovery_mode variable):
-#   report      - Display discovered infrastructure only (default for AAP)
-#   write_file  - Write inventory/aap.yml locally (default for CLI)
+#   report      - Display discovered infrastructure only (default)
+#   write_file  - Write inventory/aap.yml locally
 #   update_aap  - Create/update hosts in AAP inventory via Controller API
 #   commit_repo - Write file, commit and push to git repo
 #
 # Local usage (macOS with keychain):
 #   ansible-playbook playbooks/discover-aap-inventory.yml
+#   ansible-playbook playbooks/discover-aap-inventory.yml -e discovery_mode=write_file
 #   ansible-playbook playbooks/discover-aap-inventory.yml -e discovery_mode=commit_repo
 #
 # AAP job template usage:
 #   - Pass aap_hostname, aap_username, aap_password as extra vars
-#   - Set discovery_mode as needed (report, update_aap, or commit_repo)
-#   - For commit_repo: ensure git credentials are available
+#   - Set discovery_mode as needed (report, update_aap)
 #
 # Output:
 #   - Console: Discovered infrastructure summary
@@ -28,7 +28,7 @@
   gather_facts: false
 
   vars:
-    # AAP Gateway Connection
+    # AAP Gateway Connection - keychain with env fallback
     _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null || true', errors='ignore') }}"
     _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null || true', errors='ignore') }}"
     _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null || true', errors='ignore') }}"
@@ -39,10 +39,9 @@
     aap_validate_certs: false
 
     # Discovery mode: report, write_file, update_aap, commit_repo
-    # Default to write_file if keychain available (local), else report (AAP)
-    discovery_mode: "{{ 'write_file' if _keychain_host else 'report' }}"
+    discovery_mode: report
 
-    # Output paths
+    # Output paths (for write_file and commit_repo modes)
     inventory_output: "{{ playbook_dir }}/../inventory/aap.yml"
     repo_root: "{{ playbook_dir }}/.."
 
@@ -56,103 +55,37 @@
     git_user_name: "AAP Discovery"
     git_user_email: "aap-discovery@localhost"
 
+  roles:
+    - role: discover_aap_nodes
+
   tasks:
     # =========================================================================
-    # DISCOVERY - Query Gateway API
+    # JSON OUTPUT - For parsing by external tools
     # =========================================================================
-    - name: Query Gateway API for service types
-      ansible.builtin.uri:
-        url: "https://{{ aap_hostname }}/api/gateway/v1/service_types/"
-        method: GET
-        user: "{{ aap_username }}"
-        password: "{{ aap_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ aap_validate_certs }}"
-        return_content: true
-      register: _service_types
-
-    - name: Query Gateway API for service nodes
-      ansible.builtin.uri:
-        url: "https://{{ aap_hostname }}/api/gateway/v1/service_nodes/"
-        method: GET
-        user: "{{ aap_username }}"
-        password: "{{ aap_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ aap_validate_certs }}"
-        return_content: true
-      register: _service_nodes
-
-    - name: Build service type mapping
-      ansible.builtin.set_fact:
-        service_type_map: "{{ dict(_service_types.json.results | map(attribute='id') | zip(_service_types.json.results | map(attribute='name'))) }}"
-
-    - name: Process discovered nodes
-      ansible.builtin.set_fact:
-        discovered_nodes: "{{ _service_nodes.json.results | map(attribute='address') | unique | list }}"
-        service_ids: "{{ _service_nodes.json.results | groupby(attribute='summary_fields.service_cluster.service_type') | map('first') | list }}"
-
-    - name: Initialize host services
-      ansible.builtin.set_fact:
-        host_services: {}
-
-    - name: Build host services mapping
-      ansible.builtin.set_fact:
-        host_services: >-
-          {{ host_services | combine({
-               item: _service_nodes.json.results
-                     | selectattr('address', 'eq', item)
-                     | map(attribute='summary_fields.service_cluster.service_type')
-                     | map('extract', service_type_map)
-                     | list
-             }) }}
-      loop: "{{ discovered_nodes }}"
-
-    # =========================================================================
-    # REPORT - Display discovered infrastructure
-    # =========================================================================
-    - name: Display discovered infrastructure
-      ansible.builtin.debug:
-        msg: |
-          Discovered AAP Infrastructure:
-          ═══════════════════════════════════════════════════════════════
-          Gateway: {{ aap_hostname }}
-          Service Types: {{ service_type_map.values() | list | join(', ') }}
-          Discovery Mode: {{ discovery_mode }}
-
-          Hosts:
-          {% for host in discovered_nodes %}
-            - {{ host }} ({{ host_services[host] | join(', ') }})
-          {% endfor %}
-          ═══════════════════════════════════════════════════════════════
-
     - name: Initialize inventory hostvars
       ansible.builtin.set_fact:
-        inventory_hostvars: {}
+        _inventory_hostvars: {}
 
-    - name: Build hostvars for inventory
+    - name: Build inventory hostvars
       ansible.builtin.set_fact:
-        inventory_hostvars: >-
-          {{ inventory_hostvars | combine({
-               item: {
-                 'aap_services': host_services[item],
-                 'aap_platform': 'containerized'
-               }
+        _inventory_hostvars: >-
+          {{ _inventory_hostvars | combine({
+               item: {'aap_services': discovered_host_services[item], 'aap_platform': 'containerized'}
              }) }}
-      loop: "{{ discovered_nodes }}"
+      loop: "{{ discovered_aap_nodes }}"
 
     - name: Build inventory JSON for output
       ansible.builtin.set_fact:
         inventory_json:
           _meta:
-            hostvars: "{{ inventory_hostvars }}"
+            hostvars: "{{ _inventory_hostvars }}"
           all:
-            children: "{{ ['aap_all'] }}"
+            children: ["aap_all"]
           aap_all:
-            hosts: "{{ discovered_nodes }}"
+            hosts: "{{ discovered_aap_nodes }}"
             vars:
               cert_warning_days: 30
               cert_critical_days: 14
-            children: "{{ service_ids | map('extract', service_type_map) | map('regex_replace', '^', 'aap_') | list }}"
 
     - name: Output inventory JSON for parsing
       ansible.builtin.debug:
@@ -163,7 +96,7 @@
     # =========================================================================
     - name: Generate static inventory file
       ansible.builtin.template:
-        src: aap_inventory.yml.j2
+        src: aap_inventory_v2.yml.j2
         dest: "{{ inventory_output }}"
         mode: "0644"
       when: discovery_mode in ['write_file', 'commit_repo']
@@ -207,8 +140,8 @@
         cmd: >-
           git commit -m "chore: update AAP inventory from Gateway API discovery
 
-          Discovered hosts: {{ discovered_nodes | join(', ') }}
-          Services: {{ service_type_map.values() | list | join(', ') }}
+          Discovered hosts: {{ discovered_aap_nodes | join(', ') }}
+          Services: {{ discovered_aap_services | join(', ') }}
 
           Generated by: discover-aap-inventory.yml"
         chdir: "{{ repo_root }}"
@@ -275,13 +208,13 @@
         body:
           name: "{{ item }}"
           inventory: "{{ _inventory_id }}"
-          variables: "{{ {'aap_services': host_services[item], 'aap_platform': 'containerized'} | to_yaml }}"
+          variables: "{{ {'aap_services': discovered_host_services[item], 'aap_platform': 'containerized'} | to_yaml }}"
         status_code: [200, 201, 400]
-      loop: "{{ discovered_nodes }}"
+      loop: "{{ discovered_aap_nodes }}"
       when: discovery_mode == 'update_aap'
       register: _host_results
 
-    - name: Update existing hosts in AAP inventory
+    - name: Get existing hosts for update
       ansible.builtin.uri:
         url: "https://{{ aap_hostname }}/api/controller/v2/hosts/?name={{ item }}&inventory={{ _inventory_id }}"
         method: GET
@@ -289,7 +222,7 @@
         password: "{{ aap_password }}"
         force_basic_auth: true
         validate_certs: "{{ aap_validate_certs }}"
-      loop: "{{ discovered_nodes }}"
+      loop: "{{ discovered_aap_nodes }}"
       register: _existing_hosts
       when: discovery_mode == 'update_aap'
 
@@ -303,7 +236,7 @@
         validate_certs: "{{ aap_validate_certs }}"
         body_format: json
         body:
-          variables: "{{ {'aap_services': host_services[item.item], 'aap_platform': 'containerized'} | to_yaml }}"
+          variables: "{{ {'aap_services': discovered_host_services[item.item], 'aap_platform': 'containerized'} | to_yaml }}"
       loop: "{{ _existing_hosts.results }}"
       when:
         - discovery_mode == 'update_aap'
@@ -318,24 +251,24 @@
       ansible.builtin.debug:
         msg: |
           {% if discovery_mode == 'write_file' %}
-          ✓ Inventory written to: {{ inventory_output }}
+          Inventory written to: {{ inventory_output }}
 
           Usage:
             ansible-playbook playbooks/check-aap-certs.yml -i inventory/aap.yml
           {% elif discovery_mode == 'commit_repo' %}
-          {% if _git_diff.rc != 0 %}
-          ✓ Inventory committed and pushed to {{ git_remote }}/{{ git_branch }}
+          {% if _git_diff.rc | default(0) != 0 %}
+          Inventory committed and pushed to {{ git_remote }}/{{ git_branch }}
 
           Sync the project in AAP to use the updated inventory.
           {% else %}
-          ✓ No changes to inventory - already up to date
+          No changes to inventory - already up to date
           {% endif %}
           {% elif discovery_mode == 'update_aap' %}
-          ✓ AAP inventory "{{ aap_inventory_name }}" updated with {{ discovered_nodes | length }} host(s)
+          AAP inventory "{{ aap_inventory_name }}" updated with {{ discovered_aap_nodes | length }} host(s)
 
           The inventory is now available in AAP for job templates.
           {% else %}
-          ✓ Discovery complete (report mode)
+          Discovery complete (report mode)
 
           JSON output can be parsed with:
             grep 'AAP_INVENTORY_JSON=' | cut -d= -f2- | jq .

@@ -1,0 +1,90 @@
+---
+# roles/discover_aap_nodes/tasks/main.yml
+# Discover AAP nodes from Gateway API and add to inventory dynamically
+
+- name: Validate required variables
+  ansible.builtin.assert:
+    that:
+      - aap_hostname is defined
+      - aap_username is defined
+      - aap_password is defined
+    fail_msg: "aap_hostname, aap_username, and aap_password must be defined"
+
+- name: Query Gateway API for service types
+  ansible.builtin.uri:
+    url: "https://{{ aap_hostname }}/api/gateway/v1/service_types/"
+    method: GET
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ aap_validate_certs }}"
+    return_content: true
+  register: _service_types
+
+- name: Query Gateway API for service nodes
+  ansible.builtin.uri:
+    url: "https://{{ aap_hostname }}/api/gateway/v1/service_nodes/"
+    method: GET
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ aap_validate_certs }}"
+    return_content: true
+  register: _service_nodes
+
+- name: Build service type mapping
+  ansible.builtin.set_fact:
+    _service_type_map: >-
+      {{ dict(_service_types.json.results | map(attribute='id') |
+              zip(_service_types.json.results | map(attribute='name'))) }}
+
+- name: Extract unique node addresses
+  ansible.builtin.set_fact:
+    _discovered_nodes: "{{ _service_nodes.json.results | map(attribute='address') | unique | list }}"
+
+- name: Initialize host services mapping
+  ansible.builtin.set_fact:
+    _host_services: {}
+
+- name: Build host services mapping
+  ansible.builtin.set_fact:
+    _host_services: >-
+      {{ _host_services | combine({
+           item: _service_nodes.json.results
+                 | selectattr('address', 'eq', item)
+                 | map(attribute='summary_fields.service_cluster.service_type')
+                 | map('extract', _service_type_map)
+                 | list
+         }) }}
+  loop: "{{ _discovered_nodes }}"
+
+- name: Add discovered hosts to inventory
+  ansible.builtin.add_host:
+    name: "{{ item }}"
+    groups: "{{ (['aap_all'] + _host_services[item] | map('regex_replace', '^', 'aap_')) | join(',') }}"
+    aap_services: "{{ _host_services[item] }}"
+    aap_platform: "{{ aap_platform }}"
+    cert_warning_days: "{{ cert_warning_days }}"
+    cert_critical_days: "{{ cert_critical_days }}"
+    ansible_host: "{{ item }}"
+  loop: "{{ _discovered_nodes }}"
+
+- name: Display discovered infrastructure
+  ansible.builtin.debug:
+    msg: |
+      Discovered AAP Infrastructure:
+      ═══════════════════════════════════════════════════════════════
+      Gateway: {{ aap_hostname }}
+      Service Types: {{ _service_type_map.values() | list | join(', ') }}
+
+      Hosts added to inventory:
+      {% for host in _discovered_nodes %}
+        - {{ host }} (groups: aap_all, {{ _host_services[host] | map('regex_replace', '^', 'aap_') | join(', ') }})
+      {% endfor %}
+      ═══════════════════════════════════════════════════════════════
+
+- name: Set discovery results for calling playbooks
+  ansible.builtin.set_fact:
+    discovered_aap_nodes: "{{ _discovered_nodes }}"
+    discovered_aap_services: "{{ _service_type_map.values() | list }}"
+    discovered_host_services: "{{ _host_services }}"

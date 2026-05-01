@@ -1,0 +1,16 @@
+---
+# roles/discover_aap_nodes/defaults/main.yml
+# Default variables for AAP node discovery
+
+# AAP Gateway connection (override via extra vars or inventory)
+# aap_hostname: required
+# aap_username: required
+# aap_password: required
+aap_validate_certs: false
+
+# Default platform for discovered hosts
+aap_platform: containerized
+
+# Certificate check thresholds (applied to discovered hosts)
+cert_warning_days: 30
+cert_critical_days: 14
