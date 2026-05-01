@@ -11,35 +11,6 @@ git clone https://github.com/ffirg/platform-ops.git
 cd platform-ops
 ```
 
-## AAP Seeding
-
-Bootstrap AAP with the Platform Ops project and job templates:
-
-```bash
-# Using keychain credentials (recommended)
-ansible-playbook playbooks/seed-aap.yml
-
-# Or with environment variables
-export AAP_HOST=your-aap-host.example.com
-export AAP_USERNAME=admin
-export AAP_PASSWORD=yourpassword
-ansible-playbook playbooks/seed-aap.yml
-```
-
-This creates:
-- **Project**: Platform Ops (linked to this GitHub repo)
-- **Inventory**: Platform Ops (host: aap-mgd-node-1.lan)
-- **Job Templates**:
-  - `platform-ops | Check Server Certificates`
-  - `platform-ops | Check AAP Certificates`
-  - `platform-ops | Setup Test Certs`
-  - `platform-ops | Test Certificate Expiry`
-
-### Requirements
-
-- `infra.aap_configuration` collection
-- AAP credentials in keychain or environment variables
-
 ## Prerequisites
 
 ### macOS Keychain Setup (Recommended)
@@ -66,6 +37,37 @@ For `community.crypto` modules, install on target hosts:
 dnf install python3-cryptography    # RHEL/CentOS/Fedora
 apt install python3-cryptography    # Debian/Ubuntu
 ```
+
+## AAP Seeding
+
+### Requirements
+
+- `infra.aap_configuration` collection
+- AAP credentials in keychain or environment variables
+
+### Usage
+
+Bootstrap AAP with the Platform Ops project and job templates:
+
+```bash
+# Using keychain credentials (recommended)
+ansible-playbook playbooks/seed-aap.yml
+
+# Or with environment variables
+export AAP_HOST=your-aap-host.example.com
+export AAP_USERNAME=admin
+export AAP_PASSWORD=yourpassword
+ansible-playbook playbooks/seed-aap.yml
+```
+
+This creates:
+- **Project**: Platform Ops (linked to this GitHub repo)
+- **Inventory**: Platform Ops (host: aap-mgd-node-1.lan)
+- **Job Templates**:
+  - `platform-ops | Check Server Certificates`
+  - `platform-ops | Check AAP Certificates`
+  - `platform-ops | Setup Test Certs`
+  - `platform-ops | Test Certificate Expiry`
 
 ## Certificate Checking
 
