@@ -15,6 +15,10 @@ curl -sk -u "${AAP_USER}:${AAP_PASS}" "https://${AAP_HOST}/api/controller/v2/...
 
 Always prefix AAP API commands with these credential lookups. Never hardcode hostnames or credentials.
 
+## Testing
+
+Always follow `docs/certificate-check-test-plan.md` when running certificate tests unless told otherwise.
+
 ## AAP Asset Management Rules
 
 1. **Credentials from keychain**: Always obtain AAP credentials from macOS keychain unless explicitly told otherwise.
