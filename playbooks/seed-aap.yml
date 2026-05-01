@@ -59,15 +59,13 @@
 
     # Inventory
     controller_inventories:
-      - name: "Platform Ops - Localhost"
+      - name: "Platform Ops"
         organization: "Default"
 
     # Hosts
     controller_hosts:
-      - name: "localhost"
-        inventory: "Platform Ops - Localhost"
-        variables:
-          ansible_connection: local
+      - name: "aap-mgd-node-1.lan"
+        inventory: "Platform Ops"
 
     # Job Templates
     controller_templates:
@@ -75,7 +73,7 @@
         organization: "Default"
         project: "Platform Ops"
         playbook: "playbooks/check-certs.yml"
-        inventory: "Platform Ops - Localhost"
+        inventory: "Platform Ops"
         ask_variables_on_launch: true
         extra_vars:
           cert_checks: []
@@ -84,8 +82,24 @@
         organization: "Default"
         project: "Platform Ops"
         playbook: "playbooks/check-aap-certs.yml"
-        inventory: "Platform Ops - Localhost"
+        inventory: "Platform Ops"
         ask_variables_on_launch: true
+
+      - name: "Setup Test Certs"
+        organization: "Default"
+        project: "Platform Ops"
+        playbook: "playbooks/setup-test-certs.yml"
+        inventory: "Platform Ops"
+        ask_variables_on_launch: true
+
+      - name: "Test Certificate Expiry"
+        organization: "Default"
+        project: "Platform Ops"
+        playbook: "playbooks/test-cert-expiry.yml"
+        inventory: "Platform Ops"
+        ask_variables_on_launch: true
+        extra_vars:
+          cert_scenario: expired
 
   roles:
     - infra.aap_configuration.controller_organizations
@@ -102,13 +116,14 @@
 
           Created:
             - Project: Platform Ops
-            - Inventory: Platform Ops - Localhost
+            - Inventory: Platform Ops (host: aap-mgd-node-1.lan)
             - Job Template: Check Server Certificates
             - Job Template: Check AAP Certificates
+            - Job Template: Setup Test Certs
+            - Job Template: Test Certificate Expiry
 
-          To test remote TLS checks, launch "Check Server Certificates" with:
-            cert_checks:
-              - name: "GitHub"
-                type: remote
-                host: github.com
-                port: 443
+          Test certificate scenarios:
+            ansible-playbook playbooks/test-cert-expiry.yml -e cert_scenario=ok
+            ansible-playbook playbooks/test-cert-expiry.yml -e cert_scenario=warning
+            ansible-playbook playbooks/test-cert-expiry.yml -e cert_scenario=critical
+            ansible-playbook playbooks/test-cert-expiry.yml -e cert_scenario=expired
