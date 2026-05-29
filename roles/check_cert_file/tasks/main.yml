@@ -150,7 +150,7 @@
 
         - name: Determine certificate purpose
           vars:
-            _eku: "{{ _cert_info.extended_key_usage | default([]) | join(',') }}"
+            _eku: "{{ (_cert_info.extended_key_usage | default([], true)) | join(',') }}"
           ansible.builtin.set_fact:
             _cert_purpose: >-
               {{ 'TLS Server' if 'serverAuth' in _eku else
