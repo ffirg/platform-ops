@@ -2,13 +2,12 @@
 # roles/discover_aap_nodes/defaults/main.yml
 # Default variables for AAP node discovery
 
-# AAP Gateway connection (override via extra vars or inventory)
-# aap_hostname: required
-#
-# Authentication - use EITHER token OR username/password:
-# aap_token: OAuth2 token (preferred)
-# aap_username + aap_password: Basic auth (fallback)
-aap_validate_certs: false
+# AAP Gateway connection
+# Resolved by playbook from keychain → env → extra vars
+# gateway_hostname: required
+# gateway_username: required (for OAuth token creation)
+# gateway_password: required (for OAuth token creation)
+gateway_validate_certs: false
 
 # Default platform for discovered hosts
 aap_platform: containerized
@@ -16,3 +15,8 @@ aap_platform: containerized
 # Certificate check thresholds (applied to discovered hosts)
 cert_warning_days: 30
 cert_critical_days: 14
+
+# Inventory creation options
+create_aap_inventory: true
+aap_inventory_name: "AAP Infrastructure"
+aap_organization: "Default"

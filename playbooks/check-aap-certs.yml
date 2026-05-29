@@ -1,29 +1,85 @@
 ---
 # playbooks/check-aap-certs.yml
-# AAP certificate checking playbook
+# Unified AAP certificate checking playbook
 #
-# Usage (from AAP job template):
-#   - Set inventory containing AAP hosts
-#   - Run the job template - certificates on all hosts will be checked
+# Works in two execution contexts:
+#
+# LOCAL EXECUTION:
+#   ansible-playbook playbooks/check-aap-certs.yml -i localhost,
+#   - Uses macOS Keychain for AAP credentials
+#   - Discovers nodes via Gateway API
+#   - Creates/updates "AAP Infrastructure" inventory in AAP
+#   - Checks certificates on all discovered hosts
+#
+# AAP EXECUTION:
+#   - Create job template with this playbook
+#   - Attach "Platform Ops AAP Gateway" credential (injects AAP_HOST, AAP_USERNAME, AAP_PASSWORD)
+#   - Attach "Platform Ops Machine" credential for SSH
+#   - Inventory can be any with localhost (or AAP Infrastructure after first run)
 #
 # Options:
 #   -e "aap_platform=containerized"       # Platform: auto, containerized, openshift, kubernetes
 #   -e "cert_report_file=/tmp/report.md"  # Save markdown report
-#   -e "cert_fail_on_critical=true"       # Fail if critical certs found
-#
-# For dynamic discovery mode, use check-aap-certs-discover.yml instead.
+#   -e "create_aap_inventory=false"       # Skip AAP inventory creation
 
+# =============================================================================
+# Play 1: Discover AAP nodes and create inventory
+# =============================================================================
+- name: Discover AAP Infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    # Keychain lookups (macOS only, fail gracefully elsewhere)
+    _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null || true', errors='ignore') }}"
+    _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null || true', errors='ignore') }}"
+    _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null || true', errors='ignore') }}"
+
+    # Credential resolution chain: keychain → env → extra vars
+    gateway_hostname: >-
+      {{ _keychain_host |
+         default(lookup('env', 'AAP_HOST'), true) |
+         default(aap_hostname | default(''), true) }}
+    gateway_username: >-
+      {{ _keychain_user |
+         default(lookup('env', 'AAP_USERNAME'), true) |
+         default(aap_username | default(''), true) }}
+    gateway_password: >-
+      {{ _keychain_pass |
+         default(lookup('env', 'AAP_PASSWORD'), true) |
+         default(aap_password | default(''), true) }}
+    gateway_validate_certs: false
+
+    # Inventory creation options
+    create_aap_inventory: true
+    aap_inventory_name: "AAP Infrastructure"
+    aap_organization: "Default"
+
+    # Default platform for discovered hosts
+    aap_platform: containerized
+
+    # Certificate check thresholds
+    cert_warning_days: 30
+    cert_critical_days: 14
+
+  roles:
+    - role: discover_aap_nodes
+
+# =============================================================================
+# Play 2: Check certificates on discovered AAP hosts
+# =============================================================================
 - name: Check AAP Certificates
-  hosts: all
+  hosts: aap_discovered
   gather_facts: true
 
   vars:
     # Platform: auto, containerized, openshift, kubernetes
-    aap_platform: auto
+    aap_platform: "{{ hostvars[inventory_hostname].aap_platform | default('auto') }}"
 
-    # Thresholds
-    cert_warning_days: 30
-    cert_critical_days: 14
+    # Thresholds (inherited from discovery or use defaults)
+    cert_warning_days: "{{ hostvars[inventory_hostname].cert_warning_days | default(30) }}"
+    cert_critical_days: "{{ hostvars[inventory_hostname].cert_critical_days | default(14) }}"
 
     # Output options
     cert_show_paths: false

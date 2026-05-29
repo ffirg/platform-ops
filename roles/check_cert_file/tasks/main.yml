@@ -40,7 +40,7 @@
       failed_when: false
 
     - name: Handle certificate read error
-      when: _cert_info is failed
+      when: _cert_info.not_after is not defined
       ansible.builtin.set_fact:
         cert_info:
           name: "{{ cert_name | default(cert_path | basename) }}"
@@ -63,7 +63,7 @@
           source: null
 
     - name: Process valid certificate
-      when: _cert_info is not failed
+      when: _cert_info.not_after is defined
       block:
         - name: Calculate days remaining
           ansible.builtin.set_fact:
@@ -80,12 +80,20 @@
               }}
 
         - name: Format subject string
+          vars:
+            _cn: "{{ _cert_info.subject.commonName | default('') }}"
+            _org: "{{ _cert_info.subject.organizationName | default('') }}"
+            _country: "{{ _cert_info.subject.countryName | default('') }}"
           ansible.builtin.set_fact:
-            _subject_str: "{{ _cert_info.subject.commonName | default('') }}{% if _cert_info.subject.organizationName is defined %}, O={{ _cert_info.subject.organizationName }}{% endif %}{% if _cert_info.subject.countryName is defined %}, C={{ _cert_info.subject.countryName }}{% endif %}"
+            _subject_str: >-
+              {{ _cn }}{{ ', O=' + _org if _org else '' }}{{ ', C=' + _country if _country else '' }}
 
         - name: Format issuer string
+          vars:
+            _cn: "{{ _cert_info.issuer.commonName | default('') }}"
+            _org: "{{ _cert_info.issuer.organizationName | default('') }}"
           ansible.builtin.set_fact:
-            _issuer_str: "{{ _cert_info.issuer.commonName | default('') }}{% if _cert_info.issuer.organizationName is defined %}, O={{ _cert_info.issuer.organizationName }}{% endif %}"
+            _issuer_str: "{{ _cn }}{{ ', O=' + _org if _org else '' }}"
 
         - name: Check if self-signed
           ansible.builtin.set_fact:
@@ -140,6 +148,14 @@
             _service_verified: false
           when: _service_match is not defined
 
+        - name: Determine certificate purpose
+          vars:
+            _eku: "{{ _cert_info.extended_key_usage | default([]) | join(',') }}"
+          ansible.builtin.set_fact:
+            _cert_purpose: >-
+              {{ 'TLS Server' if 'serverAuth' in _eku else
+                 'TLS Client' if 'clientAuth' in _eku else 'General' }}
+
         - name: Build cert_info fact
           ansible.builtin.set_fact:
             cert_info:
@@ -167,7 +183,7 @@
                   - depth: 0
                     subject: "{{ _subject_str | trim }}"
                     issuer: "{{ _issuer_str | trim }}"
-              purpose: "{{ 'TLS Server' if 'serverAuth' in ((_cert_info.extended_key_usage | default([], true)) | join(',')) else 'TLS Client' if 'clientAuth' in ((_cert_info.extended_key_usage | default([], true)) | join(',')) else 'General' }}"
+              purpose: "{{ _cert_purpose | trim }}"
               service: "{{ cert_service | default(omit) }}"
               source: "{{ _cert_source }}"
               service_verified: "{{ _service_verified | default(false) }}"

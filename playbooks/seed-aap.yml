@@ -73,14 +73,52 @@
         organization: "Default"
         description: "Managed nodes for certificate testing"
 
-      - name: "Platform Ops - AAP"
+      - name: "AAP Infrastructure"
         organization: "Default"
-        description: "AAP infrastructure hosts - dynamically discovered via Gateway API"
+        description: "Dynamically discovered AAP infrastructure nodes (created by check-aap-certs.yml)"
 
     # Hosts (static hosts for non-AAP inventories)
     controller_hosts:
       - name: "aap-mgd-node-1.lan"
         inventory: "Platform Ops"
+
+      - name: "localhost"
+        inventory: "AAP Infrastructure"
+        description: "Local execution host for discovery play"
+        variables:
+          ansible_connection: local
+          ansible_python_interpreter: "{{ '{{' }} ansible_playbook_python {{ '}}' }}"
+
+    # Custom credential type for AAP Gateway authentication
+    # Injects AAP_HOST, AAP_USERNAME, AAP_PASSWORD as environment variables
+    controller_credential_types:
+      - name: "AAP Gateway Credential"
+        kind: cloud
+        description: "Credentials for AAP Gateway API authentication (injected as env vars)"
+        inputs:
+          fields:
+            - id: aap_host
+              type: string
+              label: AAP Hostname
+              help_text: "AAP Gateway hostname (e.g., carmaap1.lan)"
+            - id: aap_username
+              type: string
+              label: AAP Username
+              help_text: "Username with API access"
+            - id: aap_password
+              type: string
+              label: AAP Password
+              secret: true
+              help_text: "Password for the AAP user"
+          required:
+            - aap_host
+            - aap_username
+            - aap_password
+        injectors:
+          env:
+            AAP_HOST: "{{ '{{' }} aap_host {{ '}}' }}"
+            AAP_USERNAME: "{{ '{{' }} aap_username {{ '}}' }}"
+            AAP_PASSWORD: "{{ '{{' }} aap_password {{ '}}' }}"
 
     # Credentials - placeholder machine credential for SSH access
     # First-time users must update this credential in AAP with valid SSH key/password
@@ -91,6 +129,15 @@
         description: "SSH credential for Platform Ops managed nodes - UPDATE WITH VALID SSH KEY"
         inputs:
           username: "your_user"
+
+      - name: "Platform Ops AAP Gateway"
+        organization: "Default"
+        credential_type: "AAP Gateway Credential"
+        description: "AAP Gateway API credentials for node discovery - UPDATE WITH VALID CREDENTIALS"
+        inputs:
+          aap_host: "your_aap_hostname"
+          aap_username: "your_username"
+          aap_password: "your_password"
 
     # Job Templates - prefix with repo name for clarity
     controller_templates:
@@ -107,9 +154,10 @@
         organization: "Default"
         project: "Platform Ops"
         playbook: "playbooks/check-aap-certs.yml"
-        inventory: "Platform Ops - AAP"
+        inventory: "AAP Infrastructure"
         credentials:
           - "Platform Ops Machine"
+          - "Platform Ops AAP Gateway"
         ask_variables_on_launch: true
 
       - name: "platform-ops | Setup Test Certs"
@@ -137,6 +185,7 @@
     - infra.aap_configuration.controller_projects
     - infra.aap_configuration.controller_inventories
     - infra.aap_configuration.controller_hosts
+    - infra.aap_configuration.controller_credential_types
     - infra.aap_configuration.controller_credentials
     - infra.aap_configuration.controller_job_templates
 
@@ -149,17 +198,19 @@
           Created:
             - Project: Platform Ops
             - Inventory: Platform Ops (managed nodes for certificate testing)
-            - Inventory: Platform Ops - AAP (dynamically discovered via Gateway API)
+            - Inventory: AAP Infrastructure (dynamically populated by check-aap-certs.yml)
+            - Credential Type: AAP Gateway Credential (injects AAP_HOST, AAP_USERNAME, AAP_PASSWORD as env vars)
             - Credential: Platform Ops Machine (SSH credential)
+            - Credential: Platform Ops AAP Gateway (Gateway API access)
             - Job Template: platform-ops | Check Server Certificates
             - Job Template: platform-ops | Check AAP Certificates
             - Job Template: platform-ops | Setup Test Certs
             - Job Template: platform-ops | Test Certificate Expiry
 
           IMPORTANT: First-time setup required!
-            1. Edit the "Platform Ops Machine" credential in AAP
-            2. Add your SSH private key or password for target host access
-            3. Update inventory hosts to match your environment
+            1. Edit "Platform Ops Machine" credential - add SSH private key or password
+            2. Edit "Platform Ops AAP Gateway" credential - add AAP hostname, username, password
+            3. Credentials are injected as environment variables (never exposed in logs)
 
           Test certificate scenarios:
             ansible-playbook playbooks/test-cert-expiry.yml -e cert_scenario=ok

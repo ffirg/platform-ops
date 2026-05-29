@@ -1,125 +1,202 @@
 ---
 # roles/discover_aap_nodes/tasks/main.yml
-# Discover AAP nodes from Gateway API and add to inventory dynamically
+# Discover AAP nodes via Gateway API using ansible.platform collection
+#
+# Creates short-lived OAuth token, queries service_nodes, optionally
+# creates/updates inventory in AAP, and adds hosts to runtime inventory.
+# Token is always deleted on completion.
 
-- name: Validate required variables
+- name: Validate gateway credentials available
   ansible.builtin.assert:
     that:
-      - aap_hostname is defined and aap_hostname | length > 0
-      - (aap_token is defined and aap_token | length > 0) or
-        (aap_username is defined and aap_username | length > 0 and
-         aap_password is defined and aap_password | length > 0)
-    fail_msg: "aap_hostname and either aap_token OR (aap_username + aap_password) must be defined"
+      - gateway_hostname is defined and gateway_hostname | length > 0
+      - gateway_username is defined and gateway_username | length > 0
+      - gateway_password is defined and gateway_password | length > 0
+    fail_msg: |
+      Gateway credentials not found. Provide via:
+        - macOS Keychain (local): security add-generic-password -s aap-credentials -a aap-hostname -w 'host'
+        - Extra vars: -e "aap_hostname=... aap_username=... aap_password=..."
+    quiet: true
+  no_log: true
 
-- name: Set authentication method
+- name: Create OAuth token for API access
+  ansible.platform.token:
+    description: "Certificate discovery - {{ ansible_facts.date_time.iso8601 | default('auto') }}"
+    scope: write
+    state: present
+    gateway_hostname: "{{ gateway_hostname }}"
+    gateway_username: "{{ gateway_username }}"
+    gateway_password: "{{ gateway_password }}"
+    gateway_validate_certs: "{{ gateway_validate_certs }}"
+  no_log: true
+
+- name: Store OAuth token for later use
   ansible.builtin.set_fact:
-    _use_token_auth: "{{ aap_token is defined and aap_token | length > 0 }}"
+    _oauth_token: "{{ aap_token.token }}"
+    _oauth_token_obj: "{{ aap_token }}"
+  no_log: true
 
-- name: Query Gateway API for service types (token auth)
-  ansible.builtin.uri:
-    url: "https://{{ aap_hostname }}/api/gateway/v1/service_types/"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ aap_token }}"
-    validate_certs: "{{ aap_validate_certs }}"
-    return_content: true
-  register: _service_types_token
-  when: _use_token_auth
+- name: Discover AAP infrastructure
+  block:
+    - name: Query service types from Gateway API
+      ansible.builtin.uri:
+        url: "https://{{ gateway_hostname }}/api/gateway/v1/service_types/"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ _oauth_token }}"
+        validate_certs: "{{ gateway_validate_certs }}"
+        return_content: true
+      register: _service_types_response
 
-- name: Query Gateway API for service types (basic auth)
-  ansible.builtin.uri:
-    url: "https://{{ aap_hostname }}/api/gateway/v1/service_types/"
-    method: GET
-    user: "{{ aap_username }}"
-    password: "{{ aap_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ aap_validate_certs }}"
-    return_content: true
-  register: _service_types_basic
-  when: not _use_token_auth
+    - name: Query service nodes from Gateway API
+      ansible.builtin.uri:
+        url: "https://{{ gateway_hostname }}/api/gateway/v1/service_nodes/"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ _oauth_token }}"
+        validate_certs: "{{ gateway_validate_certs }}"
+        return_content: true
+      register: _service_nodes_response
 
-- name: Query Gateway API for service nodes (token auth)
-  ansible.builtin.uri:
-    url: "https://{{ aap_hostname }}/api/gateway/v1/service_nodes/"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ aap_token }}"
-    validate_certs: "{{ aap_validate_certs }}"
-    return_content: true
-  register: _service_nodes_token
-  when: _use_token_auth
+    - name: Set service types and nodes facts
+      ansible.builtin.set_fact:
+        _service_types: "{{ _service_types_response.json.results }}"
+        _service_nodes: "{{ _service_nodes_response.json.results }}"
 
-- name: Query Gateway API for service nodes (basic auth)
-  ansible.builtin.uri:
-    url: "https://{{ aap_hostname }}/api/gateway/v1/service_nodes/"
-    method: GET
-    user: "{{ aap_username }}"
-    password: "{{ aap_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ aap_validate_certs }}"
-    return_content: true
-  register: _service_nodes_basic
-  when: not _use_token_auth
+    - name: Build service type ID to name mapping
+      ansible.builtin.set_fact:
+        _service_type_map: >-
+          {{ dict(_service_types | map(attribute='id') |
+                  zip(_service_types | map(attribute='name'))) }}
 
-- name: Set unified result variables
-  ansible.builtin.set_fact:
-    _service_types: "{{ _service_types_token if _use_token_auth else _service_types_basic }}"
-    _service_nodes: "{{ _service_nodes_token if _use_token_auth else _service_nodes_basic }}"
+    - name: Extract unique node addresses
+      ansible.builtin.set_fact:
+        _discovered_nodes: "{{ _service_nodes | map(attribute='address') | unique | list }}"
 
-- name: Build service type mapping
-  ansible.builtin.set_fact:
-    _service_type_map: >-
-      {{ dict(_service_types.json.results | map(attribute='id') |
-              zip(_service_types.json.results | map(attribute='name'))) }}
+    - name: Initialize host services mapping
+      ansible.builtin.set_fact:
+        _host_services: {}
 
-- name: Extract unique node addresses
-  ansible.builtin.set_fact:
-    _discovered_nodes: "{{ _service_nodes.json.results | map(attribute='address') | unique | list }}"
+    - name: Build host to services mapping
+      ansible.builtin.set_fact:
+        _host_services: >-
+          {{ _host_services | combine({
+               item: _service_nodes
+                     | selectattr('address', 'eq', item)
+                     | map(attribute='summary_fields.service_cluster.service_type')
+                     | map('extract', _service_type_map)
+                     | list
+             }) }}
+      loop: "{{ _discovered_nodes }}"
 
-- name: Initialize host services mapping
-  ansible.builtin.set_fact:
-    _host_services: {}
+    - name: Display discovered infrastructure
+      ansible.builtin.debug:
+        msg: |
+          Discovered AAP Infrastructure
+          ══════════════════════════════════════════════════════════════
+          Gateway: {{ gateway_hostname }}
+          Service Types: {{ _service_types | map(attribute='name') | list | join(', ') }}
 
-- name: Build host services mapping
-  ansible.builtin.set_fact:
-    _host_services: >-
-      {{ _host_services | combine({
-           item: _service_nodes.json.results
-                 | selectattr('address', 'eq', item)
-                 | map(attribute='summary_fields.service_cluster.service_type')
-                 | map('extract', _service_type_map)
-                 | list
-         }) }}
-  loop: "{{ _discovered_nodes }}"
+          Discovered Nodes:
+          {% for host in _discovered_nodes %}
+            - {{ host }} → {{ _host_services[host] | join(', ') }}
+          {% endfor %}
+          ══════════════════════════════════════════════════════════════
 
-- name: Add discovered hosts to inventory
-  ansible.builtin.add_host:
-    name: "{{ item }}"
-    groups: "{{ (['aap_all'] + _host_services[item] | map('regex_replace', '^', 'aap_')) | join(',') }}"
-    aap_services: "{{ _host_services[item] }}"
-    aap_platform: "{{ aap_platform }}"
-    cert_warning_days: "{{ cert_warning_days }}"
-    cert_critical_days: "{{ cert_critical_days }}"
-    ansible_host: "{{ item }}"
-  loop: "{{ _discovered_nodes }}"
+    # Create/update inventory in AAP Controller
+    - name: Create AAP inventory in Controller
+      when: create_aap_inventory | bool
+      block:
+        - name: Create or update inventory
+          ansible.controller.inventory:
+            name: "{{ aap_inventory_name }}"
+            organization: "{{ aap_organization }}"
+            description: "Dynamically discovered AAP infrastructure nodes"
+            state: present
+            controller_host: "https://{{ gateway_hostname }}"
+            controller_oauthtoken: "{{ _oauth_token }}"
+            validate_certs: "{{ gateway_validate_certs }}"
 
-- name: Display discovered infrastructure
-  ansible.builtin.debug:
-    msg: |
-      Discovered AAP Infrastructure:
-      ═══════════════════════════════════════════════════════════════
-      Gateway: {{ aap_hostname }}
-      Auth: {{ 'token' if _use_token_auth else 'basic' }}
-      Service Types: {{ _service_type_map.values() | list | join(', ') }}
+        - name: Create service type groups
+          ansible.controller.group:
+            name: "aap_{{ item.name }}"
+            inventory: "{{ aap_inventory_name }}"
+            description: "AAP {{ item.name | title }} nodes"
+            state: present
+            controller_host: "https://{{ gateway_hostname }}"
+            controller_oauthtoken: "{{ _oauth_token }}"
+            validate_certs: "{{ gateway_validate_certs }}"
+          loop: "{{ _service_types }}"
+          loop_control:
+            label: "aap_{{ item.name }}"
 
-      Hosts added to inventory:
-      {% for host in _discovered_nodes %}
-        - {{ host }} (groups: aap_all, {{ _host_services[host] | map('regex_replace', '^', 'aap_') | join(', ') }})
-      {% endfor %}
-      ═══════════════════════════════════════════════════════════════
+        - name: Add discovered hosts to inventory
+          ansible.controller.host:
+            name: "{{ item }}"
+            inventory: "{{ aap_inventory_name }}"
+            description: "AAP node - {{ _host_services[item] | join(', ') }}"
+            variables:
+              ansible_host: "{{ item }}"
+              aap_services: "{{ _host_services[item] }}"
+              aap_platform: "{{ aap_platform }}"
+            state: present
+            controller_host: "https://{{ gateway_hostname }}"
+            controller_oauthtoken: "{{ _oauth_token }}"
+            validate_certs: "{{ gateway_validate_certs }}"
+          loop: "{{ _discovered_nodes }}"
+          loop_control:
+            label: "{{ item }}"
 
-- name: Set discovery results for calling playbooks
-  ansible.builtin.set_fact:
-    discovered_aap_nodes: "{{ _discovered_nodes }}"
-    discovered_aap_services: "{{ _service_type_map.values() | list }}"
-    discovered_host_services: "{{ _host_services }}"
+        - name: Add hosts to service groups
+          ansible.controller.group:
+            name: "aap_{{ item.1 }}"
+            inventory: "{{ aap_inventory_name }}"
+            hosts:
+              - "{{ item.0 }}"
+            state: present
+            controller_host: "https://{{ gateway_hostname }}"
+            controller_oauthtoken: "{{ _oauth_token }}"
+            validate_certs: "{{ gateway_validate_certs }}"
+          loop: "{{ _discovered_nodes | product(_service_types | map(attribute='name') | list) | list }}"
+          loop_control:
+            label: "{{ item.0 }} → aap_{{ item.1 }}"
+          when: item.1 in _host_services[item.0]
+
+        - name: Report inventory creation
+          ansible.builtin.debug:
+            msg: "Created/updated inventory '{{ aap_inventory_name }}' with {{ _discovered_nodes | length }} hosts"
+
+    # Add hosts to runtime inventory for immediate use in subsequent plays
+    - name: Add discovered hosts to runtime inventory
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: >-
+          {{ ['aap_discovered', 'aap_all'] +
+             (_host_services[item] | map('regex_replace', '^', 'aap_') | list) }}
+        aap_services: "{{ _host_services[item] }}"
+        aap_platform: "{{ aap_platform }}"
+        cert_warning_days: "{{ cert_warning_days }}"
+        cert_critical_days: "{{ cert_critical_days }}"
+        ansible_host: "{{ item }}"
+      loop: "{{ _discovered_nodes }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Set discovery results for calling playbooks
+      ansible.builtin.set_fact:
+        discovered_aap_nodes: "{{ _discovered_nodes }}"
+        discovered_aap_services: "{{ _service_types | map(attribute='name') | list }}"
+        discovered_host_services: "{{ _host_services }}"
+
+  always:
+    - name: Delete OAuth token
+      ansible.builtin.uri:
+        url: "https://{{ gateway_hostname }}/api/gateway/v1/tokens/{{ _oauth_token_obj.id }}/"
+        method: DELETE
+        headers:
+          Authorization: "Bearer {{ _oauth_token }}"
+        validate_certs: "{{ gateway_validate_certs }}"
+        status_code: [202, 204]
+      when: _oauth_token_obj is defined and _oauth_token is defined
+      no_log: true
+      ignore_errors: true
