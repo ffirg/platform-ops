@@ -1,0 +1,17 @@
+---
+# roles/check_aap_certs/tasks/check_and_collect.yml
+# Helper to check a single certificate and immediately collect results
+# This fixes the issue where include_role in a loop overwrites cert_info before collection
+
+- name: Check certificate {{ _cert_item.name }}
+  ansible.builtin.include_role:
+    name: check_cert_file
+  vars:
+    cert_path: "{{ _cert_item.path }}"
+    cert_name: "{{ _cert_item.name }}"
+    cert_service: "{{ _cert_item.service | default('aap') }}"
+
+- name: Collect result for {{ _cert_item.name }}
+  ansible.builtin.set_fact:
+    cert_results: "{{ cert_results + [cert_info] }}"
+  when: cert_info is defined

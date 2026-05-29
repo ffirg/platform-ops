@@ -110,25 +110,14 @@
   when: aap_platform == 'kubernetes'
 
 # Check all discovered certificates using common role
+# Note: include_role sets cert_info for each iteration, we collect it immediately
 - name: Check discovered certificates
-  ansible.builtin.include_role:
-    name: check_cert_file
+  ansible.builtin.include_tasks: check_and_collect.yml
   vars:
-    cert_path: "{{ item.path }}"
-    cert_name: "{{ item.name }}"
-    cert_service: "{{ item.service | default('aap') }}"
+    _cert_item: "{{ item }}"
   loop: "{{ cert_checks }}"
   loop_control:
     label: "{{ item.name }}"
-  register: _cert_results
-
-- name: Collect certificate results
-  ansible.builtin.set_fact:
-    cert_results: "{{ cert_results + [cert_info] }}"
-  loop: "{{ cert_checks }}"
-  loop_control:
-    label: "{{ item.name }}"
-  when: cert_info is defined
 
 # Detect AAP CA source for context
 - name: Detect if CA is installer-generated
