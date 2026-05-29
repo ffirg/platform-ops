@@ -246,3 +246,11 @@
     - name: Certificate issues detected (see report above)
       ansible.builtin.debug:
         msg: "Certificate check completed with issues - action required"
+
+# Persist report as job artifact for orchestrator workflows
+# This makes _json_report available via AAP job artifacts API
+- name: Set artifacts for orchestrator workflow
+  ansible.builtin.set_stats:
+    data:
+      cert_report: "{{ _json_report }}"
+  when: cert_report | length > 0
