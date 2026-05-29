@@ -1,6 +1,6 @@
 ---
 # playbooks/check-certs.yml
-# Generic certificate checking playbook
+# Generic certificate checking playbook with orchestrator-ready output
 #
 # Usage:
 #   # Auto-discover certificates on all hosts
@@ -17,6 +17,18 @@
 #   # Generate markdown report
 #   ansible-playbook playbooks/check-certs.yml -i inventory.yml \
 #     -e "cert_report_file=/tmp/cert-report.md"
+#
+# Output (cert_output_json=true):
+#   JSON report includes orchestrator-ready data:
+#     - flags.all_ok          Boolean - all certs healthy
+#     - flags.has_expiring    Boolean - warning/critical certs exist
+#     - flags.has_expired     Boolean - expired certs exist
+#     - flags.has_problems    Boolean - missing/error certs exist
+#     - flags.needs_action    Boolean - any action required
+#     - lists.valid[]         Pre-filtered healthy certs
+#     - lists.expiring[]      Pre-filtered warning/critical certs
+#     - lists.expired[]       Pre-filtered expired certs
+#     - lists.problems[]      Pre-filtered missing/error certs
 
 - name: Check Server Certificates
   hosts: all

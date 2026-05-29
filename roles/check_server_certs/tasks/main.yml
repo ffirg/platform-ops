@@ -2,10 +2,10 @@
 # roles/check_server_certs/tasks/main.yml
 # Orchestrate certificate checking - explicit or auto-discovery
 
-# Pre-requisite check for community.crypto modules
-- name: Check for required Python cryptography library
+# Preflight check for required Python library
+- name: Check for python3-cryptography library
   ansible.builtin.command:
-    cmd: "{{ ansible_python_interpreter | default('/usr/bin/python3') }} -c 'import cryptography'"
+    cmd: "{{ ansible_python_interpreter | default('/usr/bin/python3') }} -c 'import cryptography; print(cryptography.__version__)'"
   register: _crypto_check
   changed_when: false
   failed_when: false
@@ -13,17 +13,22 @@
 - name: Fail if cryptography library is missing
   ansible.builtin.fail:
     msg: |
-      MISSING DEPENDENCY: python3-cryptography
+      PREFLIGHT CHECK FAILED: python3-cryptography is not installed on {{ inventory_hostname }}
 
-      The community.crypto modules require the Python cryptography library.
-      Install it on {{ inventory_hostname }} with:
+      The community.crypto modules require the cryptography Python library (>= 3.3).
 
-        dnf install python3-cryptography    # RHEL/CentOS/Fedora
-        apt install python3-cryptography    # Debian/Ubuntu
-        pip install cryptography            # pip
+      To fix, run on the target host:
+        RHEL/CentOS/Fedora: dnf install python3-cryptography
+        Debian/Ubuntu:      apt install python3-cryptography
+        pip:                pip3 install cryptography
 
-      Then re-run this playbook.
+      Detected Python: {{ ansible_python_interpreter | default('/usr/bin/python3') }}
   when: _crypto_check.rc != 0
+
+- name: Display cryptography version
+  ansible.builtin.debug:
+    msg: "Preflight OK: cryptography {{ _crypto_check.stdout }} installed"
+  when: _crypto_check.rc == 0
 
 - name: Include common defaults
   ansible.builtin.include_vars:
