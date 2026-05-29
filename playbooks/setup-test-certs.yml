@@ -30,15 +30,23 @@
         state: directory
         mode: '0755'
 
+    - name: Generate private key for nginx
+      community.crypto.openssl_privatekey:
+        path: /etc/nginx/ssl/server.key
+        size: 2048
+        mode: '0600'
+
     - name: Generate self-signed certificate for nginx
-      ansible.builtin.command:
-        cmd: >
-          openssl req -x509 -nodes -days 365
-          -newkey rsa:2048
-          -keyout /etc/nginx/ssl/server.key
-          -out /etc/nginx/ssl/server.crt
-          -subj "/CN={{ ansible_fqdn }}/O=Test/C=GB"
-        creates: /etc/nginx/ssl/server.crt
+      community.crypto.x509_certificate:
+        path: /etc/nginx/ssl/server.crt
+        privatekey_path: /etc/nginx/ssl/server.key
+        provider: selfsigned
+        selfsigned_not_after: "+365d"
+        subject:
+          commonName: "{{ ansible_fqdn }}"
+          organizationName: "Test"
+          countryName: "GB"
+        mode: '0644'
 
     - name: Configure nginx for HTTPS
       ansible.builtin.copy:

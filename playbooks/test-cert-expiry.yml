@@ -30,7 +30,9 @@
 
     - name: Display scenario
       ansible.builtin.debug:
-        msg: "Creating certificate with scenario: {{ cert_scenario }} ({{ scenario_days[cert_scenario] }} days)"
+        msg: >-
+          Creating certificate with scenario: {{ cert_scenario }}
+          ({{ scenario_days[cert_scenario] }} days)
 
     - name: Create CA directory
       ansible.builtin.file:
@@ -38,115 +40,94 @@
         state: directory
         mode: '0700'
 
-    - name: Create OpenSSL CA config
-      ansible.builtin.copy:
-        dest: /etc/nginx/ssl/ca/openssl.cnf
+    - name: Generate CA private key
+      community.crypto.openssl_privatekey:
+        path: /etc/nginx/ssl/ca/ca.key
+        size: 2048
         mode: '0600'
-        content: |
-          [ ca ]
-          default_ca = CA_default
 
-          [ CA_default ]
-          dir = /etc/nginx/ssl/ca
-          database = $dir/index.txt
-          serial = $dir/serial
-          new_certs_dir = $dir
-          certificate = $dir/ca.crt
-          private_key = $dir/ca.key
-          default_md = sha256
-          policy = policy_any
-          copy_extensions = copy
+    - name: Generate CA certificate
+      community.crypto.x509_certificate:
+        path: /etc/nginx/ssl/ca/ca.crt
+        privatekey_path: /etc/nginx/ssl/ca/ca.key
+        provider: selfsigned
+        selfsigned_not_after: "+365d"
+        subject:
+          commonName: "Test CA"
+        basic_constraints:
+          - "CA:TRUE"
+        basic_constraints_critical: true
+        key_usage:
+          - keyCertSign
+          - cRLSign
+        key_usage_critical: true
+        mode: '0644'
 
-          [ policy_any ]
-          countryName = optional
-          stateOrProvinceName = optional
-          organizationName = optional
-          organizationalUnitName = optional
-          commonName = supplied
-          emailAddress = optional
+    - name: Generate server private key
+      community.crypto.openssl_privatekey:
+        path: /etc/nginx/ssl/server.key
+        size: 2048
+        mode: '0600'
+        force: true
 
-          [ req ]
-          distinguished_name = req_dn
-          x509_extensions = v3_ca
-          prompt = no
+    - name: Generate server CSR
+      community.crypto.openssl_csr:
+        path: /etc/nginx/ssl/server.csr
+        privatekey_path: /etc/nginx/ssl/server.key
+        subject:
+          commonName: "{{ ansible_fqdn }}"
+          organizationName: "Test-{{ cert_scenario | capitalize }}"
+          countryName: "GB"
+        key_usage:
+          - digitalSignature
+          - keyEncipherment
+        key_usage_critical: true
+        extended_key_usage:
+          - serverAuth
+        mode: '0644'
 
-          [ req_dn ]
-          CN = Test CA
-
-          [ v3_ca ]
-          basicConstraints = critical, CA:TRUE
-          keyUsage = critical, keyCertSign, cRLSign
-
-          [ server_cert ]
-          basicConstraints = CA:FALSE
-          keyUsage = critical, digitalSignature, keyEncipherment
-          extendedKeyUsage = serverAuth
-
-    - name: Reset CA database
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          cd /etc/nginx/ssl/ca
-          rm -f index.txt index.txt.old index.txt.attr
-          touch index.txt
-          echo "$(date +%s)" > serial
-      changed_when: true
-
-    - name: Generate CA key and certificate
-      ansible.builtin.shell:
-        cmd: |
-          cd /etc/nginx/ssl/ca
-          openssl genrsa -out ca.key 2048
-          openssl req -new -x509 -days 365 -key ca.key -out ca.crt -config openssl.cnf
-      args:
-        creates: /etc/nginx/ssl/ca/ca.crt
-
-    - name: Generate server key and CSR
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          cd /etc/nginx/ssl
-          openssl genrsa -out server.key 2048
-          openssl req -new -key server.key -out server.csr \
-            -subj "/CN={{ ansible_fqdn }}/O=Test-{{ cert_scenario | capitalize }}/C=GB"
-      changed_when: true
-
-    - name: Calculate certificate dates
+    - name: Calculate certificate validity period
       ansible.builtin.set_fact:
         _days: "{{ scenario_days[cert_scenario] | int }}"
+        _not_before: "-1d"
+        _not_after: "{{ '%+dd' | format(scenario_days[cert_scenario] | int) }}"
 
-    - name: Set start and end dates
-      ansible.builtin.set_fact:
-        start_date: "{{ '%Y%m%d%H%M%SZ' | strftime((ansible_date_time.epoch | int) - 86400) }}"
-        end_date: "{{ '%Y%m%d%H%M%SZ' | strftime((ansible_date_time.epoch | int) + (_days | int * 86400)) }}"
+    - name: Sign server certificate with CA
+      community.crypto.x509_certificate:
+        path: /etc/nginx/ssl/server.crt
+        csr_path: /etc/nginx/ssl/server.csr
+        provider: ownca
+        ownca_path: /etc/nginx/ssl/ca/ca.crt
+        ownca_privatekey_path: /etc/nginx/ssl/ca/ca.key
+        ownca_not_before: "{{ _not_before }}"
+        ownca_not_after: "{{ _not_after }}"
+        mode: '0644'
+        force: true
 
-    - name: Sign certificate
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          cd /etc/nginx/ssl
-          openssl ca -batch -config ca/openssl.cnf \
-            -extensions server_cert \
-            -startdate {{ start_date }} \
-            -enddate {{ end_date }} \
-            -in server.csr \
-            -out server.crt \
-            -notext
-          rm -f server.csr
-      changed_when: true
+    - name: Clean up CSR
+      ansible.builtin.file:
+        path: /etc/nginx/ssl/server.csr
+        state: absent
 
     - name: Verify certificate
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          openssl x509 -in /etc/nginx/ssl/server.crt -noout -dates
-          openssl x509 -in /etc/nginx/ssl/server.crt -checkend 0 && echo "STATUS: VALID" || echo "STATUS: EXPIRED"
-      register: verify_result
-      changed_when: false
+      community.crypto.x509_certificate_info:
+        path: /etc/nginx/ssl/server.crt
+      register: _cert_info
+
+    - name: Calculate days remaining
+      ansible.builtin.set_fact:
+        _days_remaining: >-
+          {{ ((_cert_info.not_after | to_datetime('%Y%m%d%H%M%SZ')).date()
+              - (now(utc=true).date())).days }}
 
     - name: Show certificate status
       ansible.builtin.debug:
-        msg: "{{ verify_result.stdout_lines }}"
+        msg:
+          - "Subject: {{ _cert_info.subject.commonName }}"
+          - "Not Before: {{ _cert_info.not_before }}"
+          - "Not After: {{ _cert_info.not_after }}"
+          - "Days Remaining: {{ _days_remaining }}"
+          - "Status: {{ 'EXPIRED' if _cert_info.expired else 'VALID' }}"
 
     - name: Reload nginx
       ansible.builtin.systemd:
