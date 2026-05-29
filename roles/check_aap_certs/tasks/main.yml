@@ -2,6 +2,34 @@
 # roles/check_aap_certs/tasks/main.yml
 # AAP-specific certificate checking - discovers and checks AAP components
 
+# Preflight check for required Python library
+- name: Check for python3-cryptography library
+  ansible.builtin.command:
+    cmd: "{{ ansible_python_interpreter | default('/usr/bin/python3') }} -c 'import cryptography; print(cryptography.__version__)'"
+  register: _crypto_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if cryptography library is missing
+  ansible.builtin.fail:
+    msg: |
+      PREFLIGHT CHECK FAILED: python3-cryptography is not installed on {{ inventory_hostname }}
+
+      The community.crypto modules require the cryptography Python library (>= 3.3).
+
+      To fix, run on the target host:
+        RHEL/CentOS/Fedora: dnf install python3-cryptography
+        Debian/Ubuntu:      apt install python3-cryptography
+        pip:                pip3 install cryptography
+
+      Detected Python: {{ ansible_python_interpreter | default('/usr/bin/python3') }}
+  when: _crypto_check.rc != 0
+
+- name: Display cryptography version
+  ansible.builtin.debug:
+    msg: "Preflight OK: cryptography {{ _crypto_check.stdout }} installed"
+  when: _crypto_check.rc == 0
+
 - name: Initialize certificate results
   ansible.builtin.set_fact:
     cert_results: []
