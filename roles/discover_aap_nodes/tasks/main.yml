@@ -113,8 +113,8 @@
             organization: "{{ aap_organization }}"
             description: "Dynamically discovered AAP infrastructure nodes"
             state: present
-            controller_host: "https://{{ gateway_hostname }}"
-            controller_oauthtoken: "{{ _oauth_token }}"
+            aap_hostname: "https://{{ gateway_hostname }}"
+            aap_token: "{{ _oauth_token }}"
             validate_certs: "{{ gateway_validate_certs }}"
 
         - name: Create service type groups
@@ -123,8 +123,8 @@
             inventory: "{{ aap_inventory_name }}"
             description: "AAP {{ item.name | title }} nodes"
             state: present
-            controller_host: "https://{{ gateway_hostname }}"
-            controller_oauthtoken: "{{ _oauth_token }}"
+            aap_hostname: "https://{{ gateway_hostname }}"
+            aap_token: "{{ _oauth_token }}"
             validate_certs: "{{ gateway_validate_certs }}"
           loop: "{{ _service_types }}"
           loop_control:
@@ -140,8 +140,8 @@
               aap_services: "{{ _host_services[item] }}"
               aap_platform: "{{ aap_platform }}"
             state: present
-            controller_host: "https://{{ gateway_hostname }}"
-            controller_oauthtoken: "{{ _oauth_token }}"
+            aap_hostname: "https://{{ gateway_hostname }}"
+            aap_token: "{{ _oauth_token }}"
             validate_certs: "{{ gateway_validate_certs }}"
           loop: "{{ _discovered_nodes }}"
           loop_control:
@@ -154,8 +154,8 @@
             hosts:
               - "{{ item.0 }}"
             state: present
-            controller_host: "https://{{ gateway_hostname }}"
-            controller_oauthtoken: "{{ _oauth_token }}"
+            aap_hostname: "https://{{ gateway_hostname }}"
+            aap_token: "{{ _oauth_token }}"
             validate_certs: "{{ gateway_validate_certs }}"
           loop: "{{ _discovered_nodes | product(_service_types | map(attribute='name') | list) | list }}"
           loop_control:
