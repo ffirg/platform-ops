@@ -200,6 +200,8 @@
         expired: "{{ _certs_expired }}"
         problems: "{{ _certs_problems }}"
       certificates: "{{ cert_report_sorted }}"
+      # Pre-serialized JSON for orchestrator script nodes (env vars must be strings)
+      certificates_json: "{{ cert_report_sorted | to_json }}"
 
 - name: Output JSON report
   ansible.builtin.debug:
