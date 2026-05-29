@@ -1,0 +1,78 @@
+---
+# playbooks/check-aap-certs-discover.yml
+# AAP certificate checking with dynamic node discovery
+#
+# This playbook queries the AAP Gateway API to discover nodes, then
+# checks certificates on each discovered host.
+#
+# Usage (local execution with keychain):
+#   ansible-playbook playbooks/check-aap-certs-discover.yml -i localhost,
+#
+# Usage (with explicit credentials):
+#   ansible-playbook playbooks/check-aap-certs-discover.yml -i localhost, \
+#     -e "aap_hostname=aap.example.com" \
+#     -e "aap_token=your-token"
+#
+# Options:
+#   -e "aap_platform=containerized"       # Platform: auto, containerized, openshift, kubernetes
+#   -e "cert_report_file=/tmp/report.md"  # Save markdown report
+#   -e "cert_fail_on_critical=true"       # Fail if critical certs found
+
+# =============================================================================
+# Play 1: Discover AAP nodes from Gateway API
+# =============================================================================
+- name: Discover AAP Nodes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # Keychain lookups for local execution (macOS only)
+    _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null || true', errors='ignore') }}"
+    _keychain_token: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-token -w 2>/dev/null || true', errors='ignore') }}"
+    _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null || true', errors='ignore') }}"
+    _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null || true', errors='ignore') }}"
+
+    # AAP connection - keychain with env fallback
+    aap_hostname: "{{ _keychain_host | default(lookup('env', 'AAP_HOST'), true) }}"
+    aap_token: "{{ _keychain_token | default(lookup('env', 'AAP_TOKEN'), true) }}"
+    aap_username: "{{ _keychain_user | default(lookup('env', 'AAP_USERNAME'), true) }}"
+    aap_password: "{{ _keychain_pass | default(lookup('env', 'AAP_PASSWORD'), true) }}"
+
+  roles:
+    - role: discover_aap_nodes
+
+# =============================================================================
+# Play 2: Check certificates on discovered AAP nodes
+# =============================================================================
+- name: Check AAP Certificates
+  hosts: aap_all
+  gather_facts: true
+
+  vars:
+    # Platform: auto, containerized, openshift, kubernetes
+    aap_platform: auto
+
+    # Thresholds
+    cert_warning_days: 30
+    cert_critical_days: 14
+
+    # Output options
+    cert_show_paths: false
+    cert_show_chain: true
+    cert_output_json: true
+    cert_report_file: ""
+
+    # Fail conditions
+    cert_fail_on_expired: true
+    cert_fail_on_critical: false
+    cert_fail_on_warning: false
+
+    # Containerized AAP base path
+    aap_base: "{{ ansible_env.HOME }}/aap"
+
+    # OpenShift/Kubernetes namespace
+    aap_namespace: "aap"
+
+  roles:
+    - role: check_aap_certs
