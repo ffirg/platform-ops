@@ -20,3 +20,8 @@ cert_critical_days: 14
 create_aap_inventory: true
 aap_inventory_name: "AAP Infrastructure"
 aap_organization: "Default"
+
+# Target host Python interpreter
+# Set explicitly to avoid Ansible discovering wrong Python version
+# (cryptography may be installed in different Python than Ansible discovers)
+target_python_interpreter: /usr/bin/python3

@@ -178,6 +178,7 @@
         cert_warning_days: "{{ cert_warning_days }}"
         cert_critical_days: "{{ cert_critical_days }}"
         ansible_host: "{{ item }}"
+        ansible_python_interpreter: "{{ target_python_interpreter | default('/usr/bin/python3') }}"
       loop: "{{ _discovered_nodes }}"
       loop_control:
         label: "{{ item }}"
