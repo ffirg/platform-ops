@@ -44,8 +44,16 @@
     - "───────────────────────────────────────────────────────────────────────────────────────"
 
 - name: Display table header
+  vars:
+    _header: >-
+      {{ '%-25s' | format('CERTIFICATE') }}
+      {{ '%-8s' | format('RESULT') }}
+      {{ '%-10s' | format('STATUS') }}
+      {{ '%6s' | format('DAYS') }}
+      {{ '%-8s' | format('SERVICE') }}
+      {{ '%-25s' | format('ISSUER') }}
   ansible.builtin.debug:
-    msg: "{{ '%-25s' | format('CERTIFICATE') }} {{ '%-8s' | format('RESULT') }} {{ '%-10s' | format('STATUS') }} {{ '%6s' | format('DAYS') }}  {{ '%-8s' | format('SERVICE') }} {{ '%-25s' | format('ISSUER') }}"
+    msg: "{{ _header | replace('\n', '') }}"
 
 - name: Display each certificate
   ansible.builtin.debug:
@@ -80,13 +88,23 @@
       when: item.chain is defined
 
 # Summary
+- name: Build summary line
+  ansible.builtin.set_fact:
+    _summary_line: >-
+      SUMMARY: Total={{ cert_summary.total }} |
+      OK={{ cert_summary.ok }} |
+      Warning={{ cert_summary.warning }} |
+      Critical={{ cert_summary.critical }} |
+      Expired={{ cert_summary.expired }} |
+      Missing={{ cert_summary.missing }}
+
 - name: Display summary
   ansible.builtin.debug:
     msg: "{{ item }}"
   loop:
-    - "───────────────────────────────────────────────────────────────────────────────────────"
-    - "SUMMARY: Total={{ cert_summary.total }} | OK={{ cert_summary.ok }} | Warning={{ cert_summary.warning }} | Critical={{ cert_summary.critical }} | Expired={{ cert_summary.expired }} | Missing={{ cert_summary.missing }}"
-    - "───────────────────────────────────────────────────────────────────────────────────────"
+    - "─────────────────────────────────────────────────────────────────────────────────"
+    - "{{ _summary_line | replace('\n', '') }}"
+    - "─────────────────────────────────────────────────────────────────────────────────"
 
 # Alerts - make issues highly visible
 - name: Calculate if action is required
@@ -103,14 +121,27 @@
     - "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
   when: _action_required | bool
 
+- name: Build alert messages
+  ansible.builtin.set_fact:
+    _alerts:
+      - >-
+        {{ '>>> EXPIRED: ' + (cert_summary.expired | string) +
+           ' certificate(s) have EXPIRED! <<<'
+           if cert_summary.expired | int > 0 else '' }}
+      - >-
+        {{ '>>> CRITICAL: ' + (cert_summary.critical | string) +
+           ' certificate(s) expire within ' + (critical_days | string) + ' days <<<'
+           if cert_summary.critical | int > 0 else '' }}
+      - >-
+        {{ '>>> WARNING: ' + (cert_summary.warning | string) +
+           ' certificate(s) expire within ' + (warn_days | string) + ' days <<<'
+           if cert_summary.warning | int > 0 else '' }}
+
 - name: Display alerts
   ansible.builtin.debug:
-    msg: "{{ item }}"
-  loop:
-    - "{{ '>>> EXPIRED: ' + cert_summary.expired | string + ' certificate(s) have EXPIRED! <<<' if cert_summary.expired | int > 0 else '' }}"
-    - "{{ '>>> CRITICAL: ' + cert_summary.critical | string + ' certificate(s) expire within ' + critical_days | string + ' days <<<' if cert_summary.critical | int > 0 else '' }}"
-    - "{{ '>>> WARNING: ' + cert_summary.warning | string + ' certificate(s) expire within ' + warn_days | string + ' days <<<' if cert_summary.warning | int > 0 else '' }}"
-  when: item != ''
+    msg: "{{ item | trim }}"
+  loop: "{{ _alerts | select | list }}"
+  when: item | trim | length > 0
 
 - name: Display action required footer
   ansible.builtin.debug:
@@ -130,6 +161,17 @@
   when: not _action_required | bool
 
 # JSON output for API/portal integration
+- name: Build filtered certificate lists for orchestrator
+  ansible.builtin.set_fact:
+    _certs_valid: >-
+      {{ cert_report_sorted | selectattr('status', 'eq', 'ok') | list }}
+    _certs_expiring: >-
+      {{ cert_report_sorted | selectattr('status', 'in', ['warning', 'critical']) | list }}
+    _certs_expired: >-
+      {{ cert_report_sorted | selectattr('status', 'eq', 'expired') | list }}
+    _certs_problems: >-
+      {{ cert_report_sorted | selectattr('status', 'in', ['missing', 'error']) | list }}
+
 - name: Build JSON report
   ansible.builtin.set_fact:
     _json_report:
@@ -146,6 +188,17 @@
         critical: "{{ cert_summary.critical | int }}"
         expired: "{{ cert_summary.expired | int }}"
         missing: "{{ cert_summary.missing | int }}"
+      flags:
+        all_ok: "{{ (cert_summary.ok | int) == (cert_summary.total | int) }}"
+        has_expiring: "{{ (cert_summary.warning | int + cert_summary.critical | int) > 0 }}"
+        has_expired: "{{ (cert_summary.expired | int) > 0 }}"
+        has_problems: "{{ (cert_summary.missing | int) > 0 or (_certs_problems | length) > 0 }}"
+        needs_action: "{{ (cert_summary.warning | int + cert_summary.critical | int + cert_summary.expired | int) > 0 }}"
+      lists:
+        valid: "{{ _certs_valid }}"
+        expiring: "{{ _certs_expiring }}"
+        expired: "{{ _certs_expired }}"
+        problems: "{{ _certs_problems }}"
       certificates: "{{ cert_report_sorted }}"
 
 - name: Output JSON report
@@ -177,7 +230,7 @@
 # Show failed task (red) for issues but don't fail the playbook
 - name: Certificate health check
   block:
-    - name: "FAILED: {{ cert_summary.expired }} certificate(s) EXPIRED"
+    - name: Fail if certificates have issues
       ansible.builtin.fail:
         msg: |
           CERTIFICATE CHECK FAILED
