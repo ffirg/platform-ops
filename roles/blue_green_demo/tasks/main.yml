@@ -52,11 +52,25 @@
         dest: "{{ bg_base_dir }}/{{ bg_environment }}/version.json"
         mode: '0644'
 
-    - name: Stop existing container if running
+    - name: Stop existing container if running (rootless)
       ansible.builtin.shell: |
         podman stop {{ _bg_container_name }} 2>/dev/null || true
         podman rm {{ _bg_container_name }} 2>/dev/null || true
       changed_when: true
+      become: false
+
+    - name: Stop existing container if running (rootful)
+      ansible.builtin.shell: |
+        podman stop {{ _bg_container_name }} 2>/dev/null || true
+        podman rm {{ _bg_container_name }} 2>/dev/null || true
+      changed_when: true
+      become: true
+
+    - name: Kill any process on the port
+      ansible.builtin.shell: |
+        fuser -k {{ _bg_port }}/tcp 2>/dev/null || true
+      changed_when: true
+      become: true
 
     - name: Start container with Python HTTP server
       ansible.builtin.shell: |
@@ -258,13 +272,31 @@
 - name: Cleanup
   when: bg_operation == 'cleanup'
   block:
-    - name: Stop and remove all demo containers
+    - name: Stop and remove all demo containers (rootless)
       ansible.builtin.shell: |
         for c in bg-demo-blue bg-demo-green bg-demo-staging; do
           podman stop $c 2>/dev/null || true
           podman rm $c 2>/dev/null || true
         done
       changed_when: true
+      become: false
+
+    - name: Stop and remove all demo containers (rootful)
+      ansible.builtin.shell: |
+        for c in bg-demo-blue bg-demo-green bg-demo-staging; do
+          podman stop $c 2>/dev/null || true
+          podman rm $c 2>/dev/null || true
+        done
+      changed_when: true
+      become: true
+
+    - name: Kill processes on demo ports
+      ansible.builtin.shell: |
+        for p in 9081 9082 9083; do
+          fuser -k $p/tcp 2>/dev/null || true
+        done
+      changed_when: true
+      become: true
 
     - name: Remove base directory
       ansible.builtin.file:
