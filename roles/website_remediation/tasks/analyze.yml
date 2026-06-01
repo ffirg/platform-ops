@@ -1,0 +1,72 @@
+---
+# Website Remediation - Analyze Task
+# Classifies the failure and determines remediation action
+
+- name: Classify the failure
+  ansible.builtin.set_fact:
+    failure_classification: >-
+      {%- if 'DNS' in alert_error or 'resolve' in alert_error | lower -%}
+      dns_failure
+      {%- elif 'SSL' in alert_error or 'certificate' in alert_error | lower -%}
+      ssl_error
+      {%- elif 'timeout' in alert_error | lower -%}
+      connection_timeout
+      {%- elif 'refused' in alert_error | lower -%}
+      connection_refused
+      {%- elif '500' in alert_error -%}
+      http_500
+      {%- elif '502' in alert_error -%}
+      http_502
+      {%- elif '503' in alert_error -%}
+      http_503
+      {%- else -%}
+      unknown
+      {%- endif -%}
+
+- name: Determine recommended action
+  ansible.builtin.set_fact:
+    recommended_action: "{{ remediation_actions[failure_classification] | default('escalate') }}"
+    can_auto_remediate: "{{ failure_classification in ['connection_timeout', 'connection_refused', 'http_500'] }}"
+
+- name: Parse URL for service identification
+  ansible.builtin.set_fact:
+    parsed_url: "{{ alert_url | urlsplit }}"
+
+- name: Identify service from URL
+  ansible.builtin.set_fact:
+    service_host: "{{ parsed_url.hostname }}"
+    service_port: "{{ parsed_url.port | default(443 if parsed_url.scheme == 'https' else 80) }}"
+    service_name: >-
+      {%- if 'blue' in alert_url or '9081' in alert_url -%}
+      blue-green-blue
+      {%- elif 'green' in alert_url or '9082' in alert_url -%}
+      blue-green-green
+      {%- else -%}
+      unknown-service
+      {%- endif -%}
+
+- name: Build analysis result
+  ansible.builtin.set_fact:
+    analysis_result:
+      url: "{{ alert_url }}"
+      status: "{{ alert_status }}"
+      error: "{{ alert_error }}"
+      classification: "{{ failure_classification }}"
+      recommended_action: "{{ recommended_action }}"
+      can_auto_remediate: "{{ can_auto_remediate }}"
+      service_host: "{{ service_host }}"
+      service_port: "{{ service_port }}"
+      service_name: "{{ service_name }}"
+      confidence: >-
+        {%- if failure_classification != 'unknown' -%}high{%- else -%}low{%- endif -%}
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+
+- name: Display analysis
+  ansible.builtin.debug:
+    msg: |
+      Failure Analysis:
+        Classification: {{ analysis_result.classification }}
+        Recommended Action: {{ analysis_result.recommended_action }}
+        Can Auto-Remediate: {{ analysis_result.can_auto_remediate }}
+        Service: {{ analysis_result.service_name }}
+        Confidence: {{ analysis_result.confidence }}

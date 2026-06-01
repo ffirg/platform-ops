@@ -1,0 +1,41 @@
+---
+# Website Remediation - Remediate Task
+# Actually performs the remediation action
+
+- name: Run analysis first
+  ansible.builtin.include_tasks: analyze.yml
+
+- name: Check if auto-remediation is possible
+  ansible.builtin.fail:
+    msg: "Cannot auto-remediate {{ failure_classification }} - requires escalation"
+  when: not can_auto_remediate | bool
+
+- name: Restart service remediation
+  when: recommended_action == "restart_service"
+  block:
+    - name: Check if this is a blue-green service
+      ansible.builtin.set_fact:
+        is_blue_green: "{{ 'blue-green' in service_name }}"
+
+    - name: Restart blue-green container
+      when: is_blue_green
+      ansible.builtin.command:
+        cmd: >
+          podman restart {{ 'blue' if 'blue' in service_name else 'green' }}-demo
+      register: restart_result
+      ignore_errors: true
+
+    - name: Wait for service to come up
+      ansible.builtin.wait_for:
+        host: "{{ service_host }}"
+        port: "{{ service_port }}"
+        timeout: 30
+      register: wait_result
+      ignore_errors: true
+
+    - name: Set remediation outcome
+      ansible.builtin.set_fact:
+        remediation_outcome:
+          action_taken: "restart_service"
+          success: "{{ wait_result is not failed }}"
+          message: "{{ 'Service restarted successfully' if wait_result is not failed else 'Service restart failed' }}"
