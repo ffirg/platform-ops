@@ -8,15 +8,9 @@
   gather_facts: true
 
   vars:
-    # These are passed from EDA via extra_vars
-    alert_url: "{{ alert_url | default('') }}"
-    alert_status: "{{ alert_status | default('down') }}"
-    alert_error: "{{ alert_error | default('unknown') }}"
-    alert_timestamp: "{{ alert_timestamp | default('') }}"
-    alert_source: "{{ alert_source | default('manual') }}"
-
     # Operation mode: analyze, remediate, or trigger_nexus
-    remediation_operation: "{{ remediation_operation | default('analyze') }}"
+    # All other vars (alert_url, alert_status, alert_error, alert_timestamp, alert_source)
+    # are passed via extra_vars and have defaults in role defaults/main.yml
 
   roles:
     - role: website_remediation
