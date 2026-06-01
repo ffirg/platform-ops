@@ -1,6 +1,7 @@
 ---
 # Blue-Green Demo Role
 # Operations: deploy, health_check, switch, status, cleanup
+# Uses shell commands for Podman (no collection dependency)
 
 - name: Validate operation
   ansible.builtin.assert:
@@ -52,26 +53,25 @@
         mode: '0644'
 
     - name: Stop existing container if running
-      containers.podman.podman_container:
-        name: "{{ _bg_container_name }}"
-        state: absent
-      ignore_errors: true
+      ansible.builtin.shell: |
+        podman stop {{ _bg_container_name }} 2>/dev/null || true
+        podman rm {{ _bg_container_name }} 2>/dev/null || true
+      changed_when: true
 
     - name: Start container with Python HTTP server
-      containers.podman.podman_container:
-        name: "{{ _bg_container_name }}"
-        image: "{{ bg_container_image }}"
-        state: started
-        ports:
-          - "{{ _bg_port }}:8000"
-        volumes:
-          - "{{ bg_base_dir }}/{{ bg_environment }}/html:/app:ro"
-        workdir: /app
-        command: ["python", "-m", "http.server", "8000"]
-        labels:
-          app: blue-green-demo
-          environment: "{{ bg_environment }}"
-          version: "{{ bg_version }}"
+      ansible.builtin.shell: |
+        podman run -d \
+          --name {{ _bg_container_name }} \
+          -p {{ _bg_port }}:8000 \
+          -v {{ bg_base_dir }}/{{ bg_environment }}/html:/app:ro \
+          -w /app \
+          --label app=blue-green-demo \
+          --label environment={{ bg_environment }} \
+          --label version={{ bg_version }} \
+          {{ bg_container_image }} \
+          python -m http.server 8000
+      register: _container_start
+      changed_when: true
 
     - name: Wait for container to be ready
       ansible.builtin.uri:
@@ -101,14 +101,11 @@
   when: bg_operation == 'health_check'
   block:
     - name: Check container is running
-      containers.podman.podman_container_info:
-        name: "{{ _bg_container_name }}"
-      register: _container_info
-
-    - name: Fail if container not running
-      ansible.builtin.fail:
-        msg: "Container {{ _bg_container_name }} is not running"
-      when: _container_info.containers | length == 0 or _container_info.containers[0].State.Running != true
+      ansible.builtin.shell: |
+        podman inspect {{ _bg_container_name }} --format '{{ '{{' }}.State.Running{{ '}}' }}'
+      register: _container_running
+      changed_when: false
+      failed_when: _container_running.stdout != 'true'
 
     - name: Check HTTP endpoint
       ansible.builtin.uri:
@@ -225,22 +222,22 @@
         _active_info: "{{ (_active_content.content | b64decode | from_json) if _active_file.stat.exists else {} }}"
 
     - name: Check blue container
-      containers.podman.podman_container_info:
-        name: bg-demo-blue
-      register: _blue_info
-      ignore_errors: true
+      ansible.builtin.shell: |
+        podman inspect bg-demo-blue --format '{{ '{{' }}.State.Running{{ '}}' }}' 2>/dev/null || echo 'false'
+      register: _blue_running
+      changed_when: false
 
     - name: Check green container
-      containers.podman.podman_container_info:
-        name: bg-demo-green
-      register: _green_info
-      ignore_errors: true
+      ansible.builtin.shell: |
+        podman inspect bg-demo-green --format '{{ '{{' }}.State.Running{{ '}}' }}' 2>/dev/null || echo 'false'
+      register: _green_running
+      changed_when: false
 
     - name: Check staging container
-      containers.podman.podman_container_info:
-        name: bg-demo-staging
-      register: _staging_info
-      ignore_errors: true
+      ansible.builtin.shell: |
+        podman inspect bg-demo-staging --format '{{ '{{' }}.State.Running{{ '}}' }}' 2>/dev/null || echo 'false'
+      register: _staging_running
+      changed_when: false
 
     - name: Set status result
       ansible.builtin.set_fact:
@@ -250,9 +247,9 @@
           active_environment: "{{ _active_info.active_environment | default('none') }}"
           active_port: "{{ _active_info.active_port | default('none') }}"
           active_version: "{{ _active_info.active_version | default('none') }}"
-          blue_running: "{{ (_blue_info.containers | default([]) | length > 0) and (_blue_info.containers[0].State.Running | default(false)) }}"
-          green_running: "{{ (_green_info.containers | default([]) | length > 0) and (_green_info.containers[0].State.Running | default(false)) }}"
-          staging_running: "{{ (_staging_info.containers | default([]) | length > 0) and (_staging_info.containers[0].State.Running | default(false)) }}"
+          blue_running: "{{ _blue_running.stdout == 'true' }}"
+          green_running: "{{ _green_running.stdout == 'true' }}"
+          staging_running: "{{ _staging_running.stdout == 'true' }}"
           message: "Active: {{ _active_info.active_environment | default('none') }} ({{ _active_info.active_version | default('none') }})"
 
 # ============================================================================
@@ -261,15 +258,13 @@
 - name: Cleanup
   when: bg_operation == 'cleanup'
   block:
-    - name: Stop all demo containers
-      containers.podman.podman_container:
-        name: "{{ item }}"
-        state: absent
-      loop:
-        - bg-demo-blue
-        - bg-demo-green
-        - bg-demo-staging
-      ignore_errors: true
+    - name: Stop and remove all demo containers
+      ansible.builtin.shell: |
+        for c in bg-demo-blue bg-demo-green bg-demo-staging; do
+          podman stop $c 2>/dev/null || true
+          podman rm $c 2>/dev/null || true
+        done
+      changed_when: true
 
     - name: Remove base directory
       ansible.builtin.file:
