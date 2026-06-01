@@ -180,6 +180,30 @@
         extra_vars:
           cert_scenario: expired
 
+      - name: "platform-ops | Blue-Green Demo"
+        organization: "Default"
+        project: "Platform Ops"
+        playbook: "playbooks/blue_green_demo.yml"
+        inventory: "AAP Infrastructure"
+        credentials:
+          - "Platform Ops Machine"
+        ask_variables_on_launch: true
+        ask_limit_on_launch: true
+        extra_vars:
+          bg_operation: status
+
+      - name: "platform-ops | Website Remediation"
+        organization: "Default"
+        project: "Platform Ops"
+        playbook: "playbooks/website_remediation.yml"
+        inventory: "AAP Infrastructure"
+        credentials:
+          - "Platform Ops Machine"
+        ask_variables_on_launch: true
+        ask_limit_on_launch: true
+        extra_vars:
+          remediation_operation: analyze
+
   roles:
     - infra.aap_configuration.controller_organizations
     - infra.aap_configuration.controller_projects
@@ -211,6 +235,14 @@
             1. Edit "Platform Ops Machine" credential - add SSH private key or password
             2. Edit "Platform Ops AAP Gateway" credential - add AAP hostname, username, password
             3. Credentials are injected as environment variables (never exposed in logs)
+
+          Job Templates:
+            - platform-ops | Check Server Certificates
+            - platform-ops | Check AAP Certificates
+            - platform-ops | Setup Test Certs
+            - platform-ops | Test Certificate Expiry
+            - platform-ops | Blue-Green Demo
+            - platform-ops | Website Remediation
 
           Test certificate scenarios:
             ansible-playbook playbooks/test-cert-expiry.yml -e cert_scenario=ok

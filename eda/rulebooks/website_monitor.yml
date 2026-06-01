@@ -1,0 +1,35 @@
+---
+- name: Website Monitoring Rulebook
+  hosts: all
+
+  sources:
+    - name: Monitor critical websites
+      ansible.eda.url_check:
+        verify_ssl: false
+        delay: 30
+        urls:
+          - https://status.redhat.com
+          - https://carmaap1.lan
+          - http://localhost:9081
+          - http://localhost:9082
+
+  rules:
+    - name: Website is down - trigger remediation workflow
+      condition:
+        any:
+          - event.url_check.status == "down"
+      throttle:
+        once_within: 5 minutes
+        group_by_attributes:
+          - event.url_check.url
+      action:
+        run_job_template:
+          name: "platform-ops | Website Remediation"
+          organization: "Default"
+          job_args:
+            extra_vars:
+              alert_url: "{{ event.url_check.url }}"
+              alert_status: "{{ event.url_check.status }}"
+              alert_error: "{{ event.url_check.error | default('unknown') }}"
+              alert_timestamp: "{{ event.received_at }}"
+              alert_source: "eda"

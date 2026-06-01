@@ -1,0 +1,170 @@
+---
+# Website Remediation Role
+# Analyzes website failures and triggers appropriate remediation
+
+- name: Display alert information
+  ansible.builtin.debug:
+    msg: |
+      Website Alert Received:
+        URL: {{ alert_url }}
+        Status: {{ alert_status }}
+        Error: {{ alert_error }}
+        Timestamp: {{ alert_timestamp }}
+        Source: {{ alert_source }}
+        Operation: {{ remediation_operation }}
+
+- name: Analyze failure type
+  when: remediation_operation == "analyze"
+  block:
+    - name: Classify the failure
+      ansible.builtin.set_fact:
+        failure_classification: >-
+          {%- if 'DNS' in alert_error or 'resolve' in alert_error | lower -%}
+          dns_failure
+          {%- elif 'SSL' in alert_error or 'certificate' in alert_error | lower -%}
+          ssl_error
+          {%- elif 'timeout' in alert_error | lower -%}
+          connection_timeout
+          {%- elif 'refused' in alert_error | lower -%}
+          connection_refused
+          {%- elif '500' in alert_error -%}
+          http_500
+          {%- elif '502' in alert_error -%}
+          http_502
+          {%- elif '503' in alert_error -%}
+          http_503
+          {%- else -%}
+          unknown
+          {%- endif -%}
+
+    - name: Determine recommended action
+      ansible.builtin.set_fact:
+        recommended_action: "{{ remediation_actions[failure_classification] | default('escalate') }}"
+        can_auto_remediate: "{{ failure_classification in ['connection_timeout', 'connection_refused', 'http_500'] }}"
+
+    - name: Parse URL for service identification
+      ansible.builtin.set_fact:
+        parsed_url: "{{ alert_url | urlsplit }}"
+
+    - name: Identify service from URL
+      ansible.builtin.set_fact:
+        service_host: "{{ parsed_url.hostname }}"
+        service_port: "{{ parsed_url.port | default(443 if parsed_url.scheme == 'https' else 80) }}"
+        service_name: >-
+          {%- if 'blue' in alert_url or '9081' in alert_url -%}
+          blue-green-blue
+          {%- elif 'green' in alert_url or '9082' in alert_url -%}
+          blue-green-green
+          {%- else -%}
+          unknown-service
+          {%- endif -%}
+
+    - name: Build analysis result
+      ansible.builtin.set_fact:
+        analysis_result:
+          url: "{{ alert_url }}"
+          status: "{{ alert_status }}"
+          error: "{{ alert_error }}"
+          classification: "{{ failure_classification }}"
+          recommended_action: "{{ recommended_action }}"
+          can_auto_remediate: "{{ can_auto_remediate }}"
+          service_host: "{{ service_host }}"
+          service_port: "{{ service_port }}"
+          service_name: "{{ service_name }}"
+          confidence: >-
+            {%- if failure_classification != 'unknown' -%}high{%- else -%}low{%- endif -%}
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+
+    - name: Display analysis
+      ansible.builtin.debug:
+        msg: |
+          Failure Analysis:
+            Classification: {{ analysis_result.classification }}
+            Recommended Action: {{ analysis_result.recommended_action }}
+            Can Auto-Remediate: {{ analysis_result.can_auto_remediate }}
+            Service: {{ analysis_result.service_name }}
+            Confidence: {{ analysis_result.confidence }}
+
+- name: Attempt remediation
+  when: remediation_operation == "remediate"
+  block:
+    - name: Run analysis first
+      ansible.builtin.include_tasks: main.yml
+      vars:
+        remediation_operation: "analyze"
+
+    - name: Check if auto-remediation is possible
+      ansible.builtin.fail:
+        msg: "Cannot auto-remediate {{ failure_classification }} - requires escalation"
+      when: not can_auto_remediate | bool
+
+    - name: Restart service remediation
+      when: recommended_action == "restart_service"
+      block:
+        - name: Check if this is a blue-green service
+          ansible.builtin.set_fact:
+            is_blue_green: "{{ 'blue-green' in service_name }}"
+
+        - name: Restart blue-green container
+          when: is_blue_green
+          ansible.builtin.command:
+            cmd: >
+              podman restart {{ 'blue' if 'blue' in service_name else 'green' }}-demo
+          register: restart_result
+          ignore_errors: true
+
+        - name: Wait for service to come up
+          ansible.builtin.wait_for:
+            host: "{{ service_host }}"
+            port: "{{ service_port }}"
+            timeout: 30
+          register: wait_result
+          ignore_errors: true
+
+        - name: Set remediation outcome
+          ansible.builtin.set_fact:
+            remediation_outcome:
+              action_taken: "restart_service"
+              success: "{{ wait_result is not failed }}"
+              message: "{{ 'Service restarted successfully' if wait_result is not failed else 'Service restart failed' }}"
+
+- name: Trigger Nexus workflow
+  when: nexus_workflow_id | length > 0
+  block:
+    - name: Call Nexus workflow API
+      ansible.builtin.uri:
+        url: "http://{{ nexus_host }}:{{ nexus_port }}/api/v1/executions"
+        method: POST
+        body_format: json
+        body:
+          workflow_id: "{{ nexus_workflow_id }}"
+          input_data:
+            alert_url: "{{ alert_url }}"
+            alert_status: "{{ alert_status }}"
+            alert_error: "{{ alert_error }}"
+            alert_timestamp: "{{ alert_timestamp }}"
+            alert_source: "{{ alert_source }}"
+        status_code: [200, 201, 202]
+      register: nexus_response
+
+    - name: Set Nexus trigger result
+      ansible.builtin.set_fact:
+        nexus_result:
+          execution_id: "{{ nexus_response.json.id | default('unknown') }}"
+          status: "triggered"
+          message: "Nexus workflow triggered successfully"
+
+- name: Output results via set_stats
+  ansible.builtin.set_stats:
+    data:
+      website_remediation:
+        alert:
+          url: "{{ alert_url }}"
+          status: "{{ alert_status }}"
+          error: "{{ alert_error }}"
+          source: "{{ alert_source }}"
+        analysis: "{{ analysis_result | default({}) }}"
+        remediation: "{{ remediation_outcome | default({}) }}"
+        nexus: "{{ nexus_result | default({}) }}"
+        operation: "{{ remediation_operation }}"
+        timestamp: "{{ ansible_date_time.iso8601 }}"
