@@ -129,7 +129,7 @@
               message: "{{ 'Service restarted successfully' if wait_result is not failed else 'Service restart failed' }}"
 
 - name: Trigger Nexus workflow
-  when: nexus_workflow_id | length > 0
+  when: nexus_workflow_id is defined and nexus_workflow_id | string | length > 0
   block:
     - name: Call Nexus workflow API
       ansible.builtin.uri:

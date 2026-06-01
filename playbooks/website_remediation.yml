@@ -18,8 +18,5 @@
     # Operation mode: analyze, remediate, or trigger_nexus
     remediation_operation: "{{ remediation_operation | default('analyze') }}"
 
-    # Nexus integration (optional)
-    nexus_workflow_id: "{{ nexus_workflow_id | default('') }}"
-
   roles:
     - role: website_remediation

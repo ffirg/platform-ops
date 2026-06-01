@@ -14,7 +14,7 @@ remediation_operation: "analyze"  # analyze, remediate, escalate
 # Nexus workflow integration
 nexus_host: "localhost"
 nexus_port: 8080
-nexus_workflow_id: ""  # Set to trigger Nexus workflow instead of local remediation
+# nexus_workflow_id: ""  # Uncomment and set to trigger Nexus workflow
 
 # Remediation settings
 max_retry_attempts: 3
