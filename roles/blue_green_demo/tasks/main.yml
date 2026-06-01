@@ -77,7 +77,7 @@
         podman run -d \
           --name {{ _bg_container_name }} \
           -p {{ _bg_port }}:8000 \
-          -v {{ bg_base_dir }}/{{ bg_environment }}/html:/app:ro \
+          -v {{ bg_base_dir }}/{{ bg_environment }}/html:/app:ro,z \
           -w /app \
           --label app=blue-green-demo \
           --label environment={{ bg_environment }} \
