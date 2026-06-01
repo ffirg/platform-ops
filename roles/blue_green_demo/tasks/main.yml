@@ -1,0 +1,296 @@
+---
+# Blue-Green Demo Role
+# Operations: deploy, health_check, switch, status, cleanup
+
+- name: Validate operation
+  ansible.builtin.assert:
+    that:
+      - bg_operation in ['deploy', 'health_check', 'switch', 'status', 'cleanup']
+    fail_msg: "Invalid operation: {{ bg_operation }}. Must be one of: deploy, health_check, switch, status, cleanup"
+
+- name: Set environment-specific port
+  ansible.builtin.set_fact:
+    _bg_port: >-
+      {% if bg_environment == 'blue' %}{{ bg_blue_port }}{% elif bg_environment == 'green' %}{{ bg_green_port }}{% else %}{{ bg_staging_port }}{% endif %}
+    _bg_container_name: "bg-demo-{{ bg_environment }}"
+
+- name: Ensure base directory exists
+  ansible.builtin.file:
+    path: "{{ bg_base_dir }}/{{ bg_environment }}"
+    state: directory
+    mode: '0755'
+  when: bg_operation in ['deploy', 'status']
+
+# ============================================================================
+# DEPLOY OPERATION
+# ============================================================================
+- name: Deploy container
+  when: bg_operation == 'deploy'
+  block:
+    - name: Create version content directory
+      ansible.builtin.file:
+        path: "{{ bg_base_dir }}/{{ bg_environment }}/html"
+        state: directory
+        mode: '0755'
+
+    - name: Generate index.html with version info
+      ansible.builtin.template:
+        src: index.html.j2
+        dest: "{{ bg_base_dir }}/{{ bg_environment }}/html/index.html"
+        mode: '0644'
+
+    - name: Write version file
+      ansible.builtin.copy:
+        content: |
+          {
+            "version": "{{ bg_version }}",
+            "environment": "{{ bg_environment }}",
+            "deployed_at": "{{ ansible_date_time.iso8601 }}",
+            "host": "{{ inventory_hostname }}"
+          }
+        dest: "{{ bg_base_dir }}/{{ bg_environment }}/version.json"
+        mode: '0644'
+
+    - name: Stop existing container if running
+      containers.podman.podman_container:
+        name: "{{ _bg_container_name }}"
+        state: absent
+      ignore_errors: true
+
+    - name: Start container with Python HTTP server
+      containers.podman.podman_container:
+        name: "{{ _bg_container_name }}"
+        image: "{{ bg_container_image }}"
+        state: started
+        ports:
+          - "{{ _bg_port }}:8000"
+        volumes:
+          - "{{ bg_base_dir }}/{{ bg_environment }}/html:/app:ro"
+        workdir: /app
+        command: ["python", "-m", "http.server", "8000"]
+        labels:
+          app: blue-green-demo
+          environment: "{{ bg_environment }}"
+          version: "{{ bg_version }}"
+
+    - name: Wait for container to be ready
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ _bg_port }}/"
+        method: GET
+        status_code: 200
+      register: _deploy_check
+      retries: "{{ bg_health_retries }}"
+      delay: 2
+      until: _deploy_check.status == 200
+
+    - name: Set deploy result
+      ansible.builtin.set_fact:
+        _bg_result:
+          operation: deploy
+          status: success
+          environment: "{{ bg_environment }}"
+          version: "{{ bg_version }}"
+          endpoint: "http://{{ inventory_hostname }}:{{ _bg_port }}"
+          container: "{{ _bg_container_name }}"
+          message: "Successfully deployed {{ bg_version }} to {{ bg_environment }} on port {{ _bg_port }}"
+
+# ============================================================================
+# HEALTH CHECK OPERATION
+# ============================================================================
+- name: Health check
+  when: bg_operation == 'health_check'
+  block:
+    - name: Check container is running
+      containers.podman.podman_container_info:
+        name: "{{ _bg_container_name }}"
+      register: _container_info
+
+    - name: Fail if container not running
+      ansible.builtin.fail:
+        msg: "Container {{ _bg_container_name }} is not running"
+      when: _container_info.containers | length == 0 or _container_info.containers[0].State.Running != true
+
+    - name: Check HTTP endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ _bg_port }}/"
+        method: GET
+        status_code: 200
+        timeout: "{{ bg_health_timeout }}"
+      register: _health_response
+
+    - name: Read version info
+      ansible.builtin.slurp:
+        src: "{{ bg_base_dir }}/{{ bg_environment }}/version.json"
+      register: _version_content
+
+    - name: Parse version info
+      ansible.builtin.set_fact:
+        _deployed_version: "{{ (_version_content.content | b64decode | from_json) }}"
+
+    - name: Set health check result
+      ansible.builtin.set_fact:
+        _bg_result:
+          operation: health_check
+          status: success
+          environment: "{{ bg_environment }}"
+          version: "{{ _deployed_version.version }}"
+          endpoint: "http://{{ inventory_hostname }}:{{ _bg_port }}"
+          http_status: "{{ _health_response.status }}"
+          container_running: true
+          message: "Health check passed for {{ bg_environment }} ({{ _deployed_version.version }})"
+
+  rescue:
+    - name: Set failed health check result
+      ansible.builtin.set_fact:
+        _bg_result:
+          operation: health_check
+          status: failed
+          environment: "{{ bg_environment }}"
+          version: "{{ bg_version | default('unknown') }}"
+          endpoint: "http://{{ inventory_hostname }}:{{ _bg_port }}"
+          container_running: false
+          message: "Health check FAILED for {{ bg_environment }}"
+
+# ============================================================================
+# SWITCH OPERATION
+# ============================================================================
+- name: Switch active environment
+  when: bg_operation == 'switch'
+  block:
+    - name: Ensure active symlink directory exists
+      ansible.builtin.file:
+        path: "{{ bg_base_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Read version from target environment
+      ansible.builtin.slurp:
+        src: "{{ bg_base_dir }}/{{ bg_environment }}/version.json"
+      register: _switch_version_content
+
+    - name: Parse version info
+      ansible.builtin.set_fact:
+        _switch_version: "{{ (_switch_version_content.content | b64decode | from_json) }}"
+
+    - name: Update active symlink
+      ansible.builtin.file:
+        src: "{{ bg_base_dir }}/{{ bg_environment }}"
+        dest: "{{ bg_base_dir }}/active"
+        state: link
+        force: true
+
+    - name: Write active port file
+      ansible.builtin.copy:
+        content: |
+          {
+            "active_environment": "{{ bg_environment }}",
+            "active_port": {{ _bg_port }},
+            "active_version": "{{ _switch_version.version }}",
+            "switched_at": "{{ ansible_date_time.iso8601 }}"
+          }
+        dest: "{{ bg_base_dir }}/active.json"
+        mode: '0644'
+
+    - name: Set switch result
+      ansible.builtin.set_fact:
+        _bg_result:
+          operation: switch
+          status: success
+          environment: "{{ bg_environment }}"
+          version: "{{ _switch_version.version }}"
+          active_slot: "{{ bg_environment }}"
+          active_port: "{{ _bg_port }}"
+          endpoint: "http://{{ inventory_hostname }}:{{ _bg_port }}"
+          message: "Traffic switched to {{ bg_environment }} ({{ _switch_version.version }}) on port {{ _bg_port }}"
+
+# ============================================================================
+# STATUS OPERATION
+# ============================================================================
+- name: Get status
+  when: bg_operation == 'status'
+  block:
+    - name: Check for active.json
+      ansible.builtin.stat:
+        path: "{{ bg_base_dir }}/active.json"
+      register: _active_file
+
+    - name: Read active info if exists
+      ansible.builtin.slurp:
+        src: "{{ bg_base_dir }}/active.json"
+      register: _active_content
+      when: _active_file.stat.exists
+
+    - name: Parse active info
+      ansible.builtin.set_fact:
+        _active_info: "{{ (_active_content.content | b64decode | from_json) if _active_file.stat.exists else {} }}"
+
+    - name: Check blue container
+      containers.podman.podman_container_info:
+        name: bg-demo-blue
+      register: _blue_info
+      ignore_errors: true
+
+    - name: Check green container
+      containers.podman.podman_container_info:
+        name: bg-demo-green
+      register: _green_info
+      ignore_errors: true
+
+    - name: Check staging container
+      containers.podman.podman_container_info:
+        name: bg-demo-staging
+      register: _staging_info
+      ignore_errors: true
+
+    - name: Set status result
+      ansible.builtin.set_fact:
+        _bg_result:
+          operation: status
+          status: success
+          active_environment: "{{ _active_info.active_environment | default('none') }}"
+          active_port: "{{ _active_info.active_port | default('none') }}"
+          active_version: "{{ _active_info.active_version | default('none') }}"
+          blue_running: "{{ (_blue_info.containers | default([]) | length > 0) and (_blue_info.containers[0].State.Running | default(false)) }}"
+          green_running: "{{ (_green_info.containers | default([]) | length > 0) and (_green_info.containers[0].State.Running | default(false)) }}"
+          staging_running: "{{ (_staging_info.containers | default([]) | length > 0) and (_staging_info.containers[0].State.Running | default(false)) }}"
+          message: "Active: {{ _active_info.active_environment | default('none') }} ({{ _active_info.active_version | default('none') }})"
+
+# ============================================================================
+# CLEANUP OPERATION
+# ============================================================================
+- name: Cleanup
+  when: bg_operation == 'cleanup'
+  block:
+    - name: Stop all demo containers
+      containers.podman.podman_container:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - bg-demo-blue
+        - bg-demo-green
+        - bg-demo-staging
+      ignore_errors: true
+
+    - name: Remove base directory
+      ansible.builtin.file:
+        path: "{{ bg_base_dir }}"
+        state: absent
+
+    - name: Set cleanup result
+      ansible.builtin.set_fact:
+        _bg_result:
+          operation: cleanup
+          status: success
+          message: "Cleaned up all blue-green demo resources"
+
+# ============================================================================
+# OUTPUT RESULTS
+# ============================================================================
+- name: Display result
+  ansible.builtin.debug:
+    var: _bg_result
+
+- name: Set artifacts for orchestrator workflow
+  ansible.builtin.set_stats:
+    data:
+      blue_green: "{{ _bg_result }}"

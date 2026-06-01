@@ -1,0 +1,32 @@
+---
+# Blue-Green Deployment Demo Playbook
+#
+# This playbook demonstrates blue-green deployment patterns using containers.
+# It's designed to work with Nexus Orchestrator workflows.
+#
+# Operations:
+#   deploy       - Deploy a version to blue, green, or staging environment
+#   health_check - Check if an environment is healthy
+#   switch       - Switch active traffic to an environment
+#   status       - Get current status of all environments
+#   cleanup      - Remove all demo containers and files
+#
+# Example usage:
+#   ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=deploy bg_environment=blue bg_version=v1.0.0"
+#   ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=health_check bg_environment=blue"
+#   ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=switch bg_environment=blue"
+#   ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=status"
+#   ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=cleanup"
+
+- name: Blue-Green Deployment Demo
+  hosts: all
+  gather_facts: true
+
+  vars:
+    # Default values - override via extra_vars
+    bg_operation: status
+    bg_environment: blue
+    bg_version: "v1.0.0"
+
+  roles:
+    - role: blue_green_demo

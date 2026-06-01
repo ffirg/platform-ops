@@ -1,0 +1,26 @@
+---
+# Blue-Green Demo defaults
+
+# Operation to perform: deploy, health_check, switch, status, cleanup
+bg_operation: status
+
+# Target environment: blue, green, staging
+bg_environment: blue
+
+# Version string to deploy
+bg_version: "v1.0.0"
+
+# Base directory for demo artifacts
+bg_base_dir: /tmp/blue-green-demo
+
+# Container ports (avoid AAP infrastructure ports 80xx)
+bg_blue_port: 9081
+bg_green_port: 9082
+bg_staging_port: 9083
+
+# Health check settings
+bg_health_timeout: 10
+bg_health_retries: 3
+
+# Container image (simple python http server)
+bg_container_image: docker.io/library/python:3.11-slim

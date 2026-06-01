@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Blue-Green Demo - {{ bg_environment | upper }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            {% if bg_environment == 'blue' %}
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            {% elif bg_environment == 'green' %}
+            background: linear-gradient(135deg, #134e5e, #71b280);
+            {% else %}
+            background: linear-gradient(135deg, #f5af19, #f12711);
+            {% endif %}
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+        }
+        h1 { font-size: 3em; margin-bottom: 10px; }
+        .version { font-size: 2em; margin: 20px 0; }
+        .env { font-size: 1.5em; opacity: 0.8; }
+        .timestamp { font-size: 0.9em; opacity: 0.6; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ bg_environment | upper }} Environment</h1>
+        <div class="version">Version: {{ bg_version }}</div>
+        <div class="env">Deployed to: {{ inventory_hostname }}</div>
+        <div class="timestamp">Deployed: {{ ansible_date_time.iso8601 }}</div>
+    </div>
+</body>
+</html>
