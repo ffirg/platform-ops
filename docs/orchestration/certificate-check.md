@@ -28,13 +28,13 @@ Runs the certificate check playbook against target hosts.
 **Configuration:**
 ```json
 {
-  "job_template_id": "__JOB_TEMPLATE_ID__",
   "job_template_name": "platform-ops | Check AAP Certificates",
+  "organization_name": "Default",
   "extra_vars": {}
 }
 ```
 
-Note: Replace `__JOB_TEMPLATE_ID__` with your actual AAP job template ID after running `seed-aap.yml`.
+Note: Job templates are referenced by name. Run `seed-aap.yml` to create the required template.
 
 **Output (via set_stats):**
 ```yaml

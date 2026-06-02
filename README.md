@@ -1,93 +1,88 @@
 # platform-ops
 
-Automated operations for enterprise infrastructure, designed for Red Hat Ansible Automation Platform (AAP) and Nexus Orchestrator integration.
+This repository provides two types of content for enterprise infrastructure automation:
 
-## Capabilities
+1. **AAP Automation Content** — Ansible playbooks and roles that execute automation tasks to configure systems and achieve desired end states
+2. **Orchestrator Workflows** — Nexus workflow definitions that sequence and coordinate the automation content with control logic, approvals, and AI-assisted decisions
 
-| Domain | Description |
-|--------|-------------|
-| **Certificate Management** | SSL/TLS certificate monitoring with auto-discovery, expiry alerts, and structured output |
-| **Blue-Green Deployments** | Zero-downtime deployments with traffic switching and approval gates |
-| **Website Remediation** | AI-assisted incident analysis and auto-remediation for service failures |
+---
 
-## Quick Start
+## Part 1: AAP Automation Content
+
+Ansible automation for Red Hat Ansible Automation Platform (AAP). These playbooks and roles perform the actual work — checking certificates, deploying containers, remediating failures.
+
+### Use Cases
+
+| Domain | What It Does |
+|--------|--------------|
+| **Certificate Management** | Monitor SSL/TLS certificates across infrastructure. Auto-discover certificates, check expiry dates, generate alerts for expiring/expired certs, output structured reports. |
+| **Blue-Green Deployments** | Zero-downtime deployments using container-based environments. Deploy new versions to inactive environment, verify health, switch traffic atomically. |
+| **Website Remediation** | Analyze website failures, classify root causes, execute remediation actions (restart services, check DNS, validate SSL). |
+
+### Quick Start
 
 ```bash
 git clone https://github.com/ffirg/platform-ops.git
 cd platform-ops
 ```
 
-### AAP Bootstrap
+### Prerequisites
+
+**AAP Credentials** — Configure via environment variables or macOS Keychain:
 
 ```bash
-# Configure credentials (see Prerequisites below)
+# Option 1: Environment variables
+export CONTROLLER_HOST="your-aap-gateway.example.com"
+export CONTROLLER_USERNAME="your-username"
+export CONTROLLER_PASSWORD="your-password"
+# Or use token auth:
+export CONTROLLER_OAUTH_TOKEN="your-oauth-token"
+
+# Option 2: macOS Keychain
+security add-generic-password -s "aap-credentials" -a "aap-hostname" -w "<your-aap-host>"
+security add-generic-password -s "aap-credentials" -a "aap-token" -w "<your-oauth-token>"
+# Or basic auth:
+security add-generic-password -s "aap-credentials" -a "aap-username" -w "<your-username>"
+security add-generic-password -s "aap-credentials" -a "aap-password" -w "<your-password>"
+```
+
+**Target Host Requirements:**
+```bash
+dnf install python3-cryptography    # For certificate checking
+dnf install podman                   # For blue-green deployments
+```
+
+### Seed AAP
+
+```bash
+# Create project, inventories, credentials, and job templates in AAP
 ansible-playbook playbooks/seed-aap.yml
 ```
 
-This creates the Platform Ops project, inventories, credentials, and job templates in AAP.
+### Job Templates Created
+
+| Job Template | Playbook | Purpose |
+|--------------|----------|---------|
+| `platform-ops \| Check Server Certificates` | `check-certs.yml` | Generic certificate checking with auto-discovery |
+| `platform-ops \| Check AAP Certificates` | `check-aap-certs.yml` | AAP-specific certificate discovery |
+| `platform-ops \| Blue-Green Demo` | `blue_green_demo.yml` | Multi-operation deployment (status/deploy/health/switch) |
+| `platform-ops \| Website Remediation` | `website_remediation.yml` | Failure analysis and remediation |
+| `platform-ops \| Setup Test Certs` | `setup-test-certs.yml` | Generate test certificates |
+| `platform-ops \| Test Certificate Expiry` | `test-cert-expiry.yml` | Create certs with specific expiry scenarios |
 
 ---
 
-## Nexus Orchestrator Integration
+### Certificate Management
 
-This repository provides the Ansible automation that powers Nexus workflow use cases. Each workflow combines AAP job templates with orchestration logic (conditions, approvals, AI decisions).
+Extensible certificate checking for any server, with specialized support for AAP infrastructure.
 
-### Workflow Use Cases
-
-| Workflow | Description | Job Template |
-|----------|-------------|--------------|
-| **Certificate Expiration Check** | Check certs → conditional Jira ticket → notification | `platform-ops \| Certificate Check` |
-| **Blue-Green Deployment** | Deploy → health check → approval → traffic switch | `platform-ops \| Blue-Green Demo` |
-| **EDA Auto-Remediation** | Analyze failure → AI decision → auto-fix or escalate | `platform-ops \| Website Remediation` |
-
-### AAP Job Templates
-
-| ID | Job Template | Playbook | Description |
-|----|--------------|----------|-------------|
-| 26 | `platform-ops \| Certificate Check` | `check-certs.yml` | Check certificates with auto-discovery |
-| 27 | `platform-ops \| Blue-Green Demo` | `blue_green_demo.yml` | Multi-operation deployment (status/deploy/health/switch/cleanup) |
-| 28 | `platform-ops \| Website Remediation` | `website_remediation.yml` | Analyze and remediate website failures |
-
-### Workflow JSON Files
-
-Workflow definitions for import into Nexus are included in this repository:
-
-```
-platform-ops/
-└── orchestrator/
-    ├── README.md                      # Import instructions & configuration
-    └── workflows/
-        ├── aap-certificate-checks.json
-        ├── blue-green-deployment.json
-        └── eda-auto-remediation.json
-```
-
-**To import:** See [orchestrator/README.md](orchestrator/README.md) for step-by-step instructions and placeholder configuration.
-
----
-
-## Certificate Management
-
-Extensible certificate checking for any server, with specialized support for AAP.
-
-### Features
-
+**Features:**
 - **Auto-discovery**: Finds certificates automatically if no explicit paths provided
 - **AAP-specific support**: Automatic discovery of AAP components (containerized, OpenShift, Kubernetes)
 - **Multiple output formats**: Console, Markdown, JSON (for API/portal integration)
 - **Configurable thresholds**: Warning (30 days) and critical (14 days) alerts
 
-### Playbooks
-
-| Playbook | Description |
-|----------|-------------|
-| `check-certs.yml` | Generic certificate checking with auto-discovery |
-| `check-aap-certs.yml` | AAP-specific certificate discovery and checking |
-| `setup-test-certs.yml` | Generate test certificates on target hosts |
-| `test-cert-expiry.yml` | Create certificates with specific expiry scenarios |
-
-### Usage
-
+**Usage:**
 ```bash
 # Check all certificates on a server (auto-discovery)
 ansible-playbook playbooks/check-certs.yml -i myserver.example.com,
@@ -96,12 +91,8 @@ ansible-playbook playbooks/check-certs.yml -i myserver.example.com,
 ansible-playbook playbooks/check-aap-certs.yml
 ```
 
-### Orchestrator Integration
-
-The certificate check workflow uses `set_stats` to return structured data:
-
+**Output Structure (via set_stats):**
 ```yaml
-# Output structure (under cert_check key)
 cert_check:
   total_checked: 5
   expiring_soon: 1
@@ -112,16 +103,13 @@ cert_check:
       days_remaining: 20
 ```
 
-Nexus workflow conditions evaluate `${check_certs.result.cert_check.expiring_soon} > 0` to route to Jira ticket creation.
-
 ---
 
-## Blue-Green Deployments
+### Blue-Green Deployments
 
-Zero-downtime deployment pattern using containerized environments with approval gates.
+Zero-downtime deployment pattern using containerized environments.
 
-### Architecture
-
+**Architecture:**
 ```
 ┌─────────────┐     ┌─────────────┐
 │    Blue     │     │    Green    │
@@ -136,9 +124,7 @@ Zero-downtime deployment pattern using containerized environments with approval 
         └─────────────┘
 ```
 
-### Operations
-
-The `blue_green_demo.yml` playbook supports multiple operations via `bg_operation`:
+**Operations (via `bg_operation` variable):**
 
 | Operation | Description |
 |-----------|-------------|
@@ -148,8 +134,7 @@ The `blue_green_demo.yml` playbook supports multiple operations via `bg_operatio
 | `switch` | Update active symlink to new environment |
 | `cleanup` | Remove all demo containers and files |
 
-### Usage
-
+**Usage:**
 ```bash
 # Check current status
 ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=status"
@@ -157,41 +142,27 @@ ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=status"
 # Deploy v2.0 to blue environment
 ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=deploy bg_environment=blue bg_version=v2.0"
 
-# Health check blue
-ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=health_check bg_environment=blue"
-
 # Switch traffic to blue
 ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=switch bg_environment=blue"
 ```
 
-### Orchestrator Integration
-
-The Nexus workflow sequences these operations with an approval gate before switching:
-
-```
-Deploy → Health Check → Healthy?
-                         ├─ Yes → Approval → Approved? → Switch → Notify
-                         │                   └─ Rejected → Notify
-                         └─ No → Notify Failed
-```
-
 ---
 
-## Website Remediation
+### Website Remediation
 
-AI-assisted incident analysis and auto-remediation for EDA-triggered alerts.
+Failure analysis and remediation for website monitoring alerts.
 
-### Operations
+**Operations:**
 
 | Operation | Description |
 |-----------|-------------|
 | `analyze` | Classify failure type and recommend action |
 | `remediate` | Execute remediation action |
 
-### Failure Classifications
+**Failure Classifications:**
 
-| Classification | Recommended Action | Auto-Remediate |
-|----------------|-------------------|----------------|
+| Classification | Recommended Action | Auto-Remediate Safe |
+|----------------|-------------------|---------------------|
 | `connection_refused` | `restart_service` | ✅ Yes |
 | `connection_timeout` | `restart_service` | ✅ Yes |
 | `http_500` | `restart_service` | ✅ Yes |
@@ -200,99 +171,87 @@ AI-assisted incident analysis and auto-remediation for EDA-triggered alerts.
 | `http_502` | `check_upstream` | ❌ No |
 | `http_503` | `check_capacity` | ❌ No |
 
-### Orchestrator Integration
-
-The EDA Auto-Remediation workflow uses an **agentic AI node** to decide whether to auto-remediate or escalate:
-
-```
-Analyze Alert → AI Decision → Auto-Remediate?
-                               ├─ Yes (low risk) → Run Remediation → Notify
-                               └─ No (high risk) → Approval → Manual Fix → Notify
-```
-
-The AI evaluates failure context and returns a structured decision with risk assessment.
-
 ---
 
-## Roles
+## Part 2: Orchestrator Workflows
 
-| Role | Description |
-|------|-------------|
-| `discover_aap_nodes` | Discovers AAP nodes from Gateway API via `add_host` |
-| `check_server_certs` | Orchestrates certificate checking with auto-discovery |
-| `check_aap_certs` | AAP-specific certificate discovery and checking |
-| `check_cert_file` | Check a single certificate file |
-| `cert_report` | Generate reports (console, markdown, JSON) |
-| `cert_common` | Shared defaults and variables |
-| `blue_green_demo` | Blue-green deployment operations |
-| `website_remediation` | Website failure analysis and remediation |
+Nexus Orchestrator workflow definitions that sequence the automation content above with control flow logic. Workflows add:
 
----
+- **Conditional branching** — Route execution based on automation results
+- **Approval gates** — Human review before critical actions
+- **AI-assisted decisions** — LLM-powered analysis and risk assessment
+- **Loops** — Process collections of items (e.g., certificates)
+- **Notifications** — Structured output for downstream systems
 
-## Prerequisites
+### Workflow Files
 
-### macOS Keychain Setup
-
-Store AAP credentials securely:
-
-```bash
-# Hostname (required)
-security add-generic-password -s "aap-credentials" -a "aap-hostname" -w "your-aap-host.example.com"
-
-# Token auth (preferred)
-security add-generic-password -s "aap-credentials" -a "aap-token" -w "your-oauth-token"
-
-# Or basic auth
-security add-generic-password -s "aap-credentials" -a "aap-username" -w "admin"
-security add-generic-password -s "aap-credentials" -a "aap-password" -w "yourpassword"
+```
+platform-ops/
+└── orchestrator/
+    ├── README.md                      # Import instructions & configuration
+    └── workflows/
+        ├── aap-certificate-checks.json
+        ├── blue-green-deployment.json
+        └── eda-auto-remediation.json
 ```
 
-### Target Host Requirements
+### Available Workflows
 
-For certificate checking:
-```bash
-dnf install python3-cryptography    # RHEL/CentOS/Fedora
+| Workflow | Automation Used | Orchestration Logic |
+|----------|-----------------|---------------------|
+| **Certificate Checks** | `Check AAP Certificates` | Loop each cert → Actions per status → Consolidated report |
+| **Blue-Green Deployment** | `Blue-Green Demo` | Status → Deploy → Health check → Approval gate → Switch |
+| **EDA Auto-Remediation** | `Website Remediation` | Analyze → AI decision (auto-fix vs escalate) → Approval if needed |
+
+### How Workflows Use Automation
+
+Workflows reference AAP job templates **by name**, not ID:
+
+```json
+{
+  "type": "aap_job_template",
+  "config": {
+    "job_template_name": "platform-ops | Blue-Green Demo",
+    "organization_name": "Default",
+    "extra_vars": {
+      "bg_operation": "deploy",
+      "bg_environment": "${calculate_target.target_env}"
+    }
+  }
+}
 ```
 
-For blue-green deployments:
-```bash
-dnf install podman                  # Container runtime
+The Nexus backend resolves names to IDs at runtime via AAP's API.
+
+### Workflow Patterns
+
+**Certificate Check Flow:**
+```
+Trigger → Discover Certs (AAP) → Loop Each Cert → Actions → Consolidated Report
 ```
 
----
+**Blue-Green Deployment Flow:**
+```
+Trigger → Check Status (AAP) → Calculate Target → Deploy (AAP) → Health Check (AAP)
+    → Healthy? ─┬─ Yes → Approval → Switch (AAP) → Notify Success
+                └─ No  → Notify Health Failed
+```
 
-## Configuration
+**EDA Auto-Remediation Flow:**
+```
+Trigger → Analyze Alert (AAP) → AI Decision → Auto-Remediate?
+    ├─ Yes (low risk)  → Run Remediation (AAP) → Notify
+    └─ No (high risk)  → Approval → Manual Remediation (AAP) → Notify
+```
 
-### Certificate Checking
+### Importing Workflows
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `cert_warning_days` | 30 | Days before expiry to trigger warning |
-| `cert_critical_days` | 14 | Days before expiry to trigger critical |
-| `cert_output_json` | true | Output JSON for API consumption |
+1. Run `seed-aap.yml` to create required job templates in AAP
+2. Create Nexus credentials (AAP credential, optionally LLM credential)
+3. Import workflow JSON from `orchestrator/workflows/`
+4. Replace placeholder values (`__AAP_CREDENTIAL_ID__`, etc.)
 
-### Blue-Green Demo
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `bg_operation` | `status` | Operation to perform |
-| `bg_environment` | - | Target environment (blue/green) |
-| `bg_version` | - | Version to deploy |
-| `bg_port_blue` | 9081 | Blue environment port |
-| `bg_port_green` | 9082 | Green environment port |
-
----
-
-## Testing
-
-- [Certificate Check Test Plan](docs/testing/certificate-check-test-plan.md)
-
----
-
-## Related Documentation
-
-- [Nexus Example Workflows](../aap-orchestrator/docs/nexus-example-workflows.md) — Full workflow documentation
-- [Nexus Workflow Schemas](../aap-orchestrator/docs/nexus-workflow-schemas-verified.md) — JSON schema reference
+See [orchestrator/README.md](orchestrator/README.md) for detailed instructions.
 
 ---
 

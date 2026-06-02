@@ -22,9 +22,10 @@ Before workflows will execute, you must replace placeholder values with your env
 |-------------|-------------|-------------|
 | `__AAP_CREDENTIAL_ID__` | Nexus credential UUID for AAP authentication | Nexus UI → Credentials → copy ID |
 | `__LLM_CREDENTIAL_ID__` | Nexus credential UUID for OpenRouter/LLM | Nexus UI → Credentials → copy ID |
-| `__JOB_TEMPLATE_ID__` | AAP job template numeric ID | AAP UI → Templates → view ID in URL |
 | `__TARGET_HOST__` | Target host for job execution | Your AAP inventory hostname |
 | `__YOUR_AAP_HOSTNAME__` | AAP Gateway hostname (for cert checks) | Your AAP FQDN |
+
+**Note:** Job templates are referenced by **name** (e.g., `platform-ops | Blue-Green Demo`), not by ID. The Nexus backend resolves names to IDs at runtime via AAP's API.
 
 ### Using Find & Replace
 
@@ -33,7 +34,6 @@ After importing, use your editor or the Nexus UI to find and replace:
 ```bash
 # Example: Replace placeholders in imported workflow
 sed -i 's/__AAP_CREDENTIAL_ID__/68904b3c-6319-470a-8be6-7a9d23ff019a/g' workflow.json
-sed -i 's/__JOB_TEMPLATE_ID__/27/g' workflow.json
 sed -i 's/__TARGET_HOST__/myserver.example.com/g' workflow.json
 ```
 
@@ -47,7 +47,6 @@ sed -i 's/__TARGET_HOST__/myserver.example.com/g' workflow.json
 
 **Placeholders:**
 - `__AAP_CREDENTIAL_ID__` — Nexus AAP credential
-- `__JOB_TEMPLATE_ID__` — Job template ID (run `seed-aap.yml` first)
 - `__TARGET_HOST__` — Host with podman for container deployments
 
 **Flow:**
@@ -68,7 +67,6 @@ Trigger → Check Status → Calculate Target → Deploy → Health Check → He
 **Placeholders:**
 - `__AAP_CREDENTIAL_ID__` — Nexus AAP credential
 - `__LLM_CREDENTIAL_ID__` — OpenRouter/LLM credential for AI decisions
-- `__JOB_TEMPLATE_ID__` — Job template ID
 
 **Flow:**
 ```
@@ -87,7 +85,6 @@ Trigger → Analyze Alert → AI Decision → Auto-Remediate?
 
 **Placeholders:**
 - `__AAP_CREDENTIAL_ID__` — Nexus AAP credential
-- `__JOB_TEMPLATE_ID__` — Job template ID
 - `__YOUR_AAP_HOSTNAME__` — AAP Gateway hostname (in trigger defaults)
 
 **Flow:**
@@ -107,10 +104,10 @@ Run the AAP seeding playbook to create required job templates:
 ansible-playbook playbooks/seed-aap.yml
 ```
 
-This creates:
-- `platform-ops | Blue-Green Demo` (ID varies by environment)
-- `platform-ops | Website Remediation` (ID varies by environment)
-- `platform-ops | Check AAP Certificates` (ID varies by environment)
+This creates job templates that workflows reference by name:
+- `platform-ops | Blue-Green Demo`
+- `platform-ops | Website Remediation`
+- `platform-ops | Check AAP Certificates`
 
 ### 2. Create Nexus Credentials
 
@@ -119,16 +116,17 @@ In Nexus UI → **Credentials**, create:
 1. **AAP Credential** — Type: AAP, with your AAP hostname and credentials
 2. **LLM Credential** (for EDA workflow) — Type: OpenRouter, with API key
 
-### 3. Get IDs
+### 3. Get Credential IDs
 
-After creating resources, collect the IDs:
+After creating Nexus credentials, collect the IDs:
 
 ```bash
-# Get AAP job template IDs
-curl -sk -u admin:password https://your-aap/api/controller/v2/job_templates/ | jq '.results[] | {name, id}'
-
 # Nexus credential IDs are shown in the Credentials list UI
+# Or via API:
+curl -s http://localhost:8000/api/v1/credentials | jq '.[] | {name, id}'
 ```
+
+**Note:** AAP job template IDs are not needed — workflows reference templates by name.
 
 ## Security Notes
 

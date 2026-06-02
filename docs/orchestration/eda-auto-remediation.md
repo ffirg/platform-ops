@@ -7,7 +7,7 @@ AI-assisted incident remediation triggered by Event-Driven Ansible, with automat
 | Attribute | Value |
 |-----------|-------|
 | **Trigger** | Manual (designed for EDA webhook) |
-| **AAP Job Template** | `platform-ops \| Website Remediation` (ID: 28) |
+| **AAP Job Template** | `platform-ops \| Website Remediation` |
 | **Playbook** | `playbooks/website_remediation.yml` |
 | **Role** | `roles/website_remediation/` |
 | **AI Provider** | OpenRouter (Claude) |
@@ -273,10 +273,12 @@ curl http://192.168.138.212:9081
 
 ## Credentials
 
-| Credential | ID | Purpose |
-|------------|-----|---------|
-| OpenRouter LLM | `f2b8dfe2-b0c9-4564-87e5-e8ff71086c66` | AI decision node |
-| AAP Credential | `68904b3c-6319-470a-8be6-7a9d23ff019a` | Workflow → AAP auth |
+| Credential Type | Purpose |
+|-----------------|---------|
+| OpenRouter LLM | AI decision node |
+| AAP Credential | Workflow → AAP auth |
+
+Create these credentials in Nexus UI → Credentials, then replace placeholders in workflow JSON.
 
 ## Workflow JSON
 

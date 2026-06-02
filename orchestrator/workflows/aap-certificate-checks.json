@@ -4,9 +4,9 @@
   "schema_version": "2.0.0",
   "_configuration_required": {
     "credential_id": "Replace __AAP_CREDENTIAL_ID__ with your Nexus AAP credential UUID",
-    "job_template_id": "Replace __JOB_TEMPLATE_ID__ with your AAP job template ID for 'platform-ops | Check AAP Certificates'",
     "aap_hostname": "Update default in trigger.config.input_schema.properties.aap_hostname.default"
   },
+  "_note": "Job templates are referenced by name, not ID. Ensure 'platform-ops | Check AAP Certificates' exists in AAP (run seed-aap.yml).",
   "triggers": [
     {
       "id": "trigger",
@@ -50,7 +50,6 @@
           "cert_critical_days": "${trigger.cert_critical_days}"
         },
         "credential_id": "__AAP_CREDENTIAL_ID__",
-        "job_template_id": "__JOB_TEMPLATE_ID__",
         "job_template_name": "platform-ops | Check AAP Certificates",
         "organization_name": "Default"
       },

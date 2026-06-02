@@ -3,10 +3,10 @@
   "description": "Deploys to inactive environment, health checks, approval, then switches traffic.",
   "schema_version": "2.0.0",
   "_configuration_required": {
-    "credential_id": "Replace with your Nexus AAP credential UUID",
-    "job_template_id": "Replace with your AAP job template ID for 'platform-ops | Blue-Green Demo'",
-    "limit": "Replace with your target host"
+    "credential_id": "Replace __AAP_CREDENTIAL_ID__ with your Nexus AAP credential UUID",
+    "limit": "Replace __TARGET_HOST__ with your target host (or remove for all hosts)"
   },
+  "_note": "Job templates are referenced by name, not ID. Ensure 'platform-ops | Blue-Green Demo' exists in AAP (run seed-aap.yml).",
   "triggers": [
     {
       "id": "trigger",
@@ -33,7 +33,6 @@
       "name": "Check Active Environment",
       "type": "aap_job_template",
       "config": {
-        "job_template_id": "__JOB_TEMPLATE_ID__",
         "job_template_name": "platform-ops | Blue-Green Demo",
         "organization_name": "Default",
         "credential_id": "__AAP_CREDENTIAL_ID__",
@@ -67,7 +66,6 @@
       "name": "Deploy to Target",
       "type": "aap_job_template",
       "config": {
-        "job_template_id": "__JOB_TEMPLATE_ID__",
         "job_template_name": "platform-ops | Blue-Green Demo",
         "organization_name": "Default",
         "credential_id": "__AAP_CREDENTIAL_ID__",
@@ -87,7 +85,6 @@
       "name": "Health Check",
       "type": "aap_job_template",
       "config": {
-        "job_template_id": "__JOB_TEMPLATE_ID__",
         "job_template_name": "platform-ops | Blue-Green Demo",
         "organization_name": "Default",
         "credential_id": "__AAP_CREDENTIAL_ID__",
@@ -124,7 +121,6 @@
       "name": "Switch Traffic",
       "type": "aap_job_template",
       "config": {
-        "job_template_id": "__JOB_TEMPLATE_ID__",
         "job_template_name": "platform-ops | Blue-Green Demo",
         "organization_name": "Default",
         "credential_id": "__AAP_CREDENTIAL_ID__",

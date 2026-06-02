@@ -93,7 +93,7 @@ platform-ops/
 | `platform-ops \| Blue-Green Demo` | `blue_green_demo.yml` | `seed-aap.yml` |
 | `platform-ops \| Website Remediation` | `website_remediation.yml` | `seed-aap.yml` |
 
-**Note:** Job template IDs are environment-specific. Run `seed-aap.yml` to create templates, then get IDs from your AAP instance.
+**Note:** Workflows reference job templates by name, not ID. Run `seed-aap.yml` to create the required templates.
 
 ### Nexus Credentials Required
 

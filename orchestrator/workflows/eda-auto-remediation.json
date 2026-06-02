@@ -4,9 +4,9 @@
   "schema_version": "2.0.0",
   "_configuration_required": {
     "credential_id (AAP)": "Replace __AAP_CREDENTIAL_ID__ with your Nexus AAP credential UUID",
-    "credential_id (LLM)": "Replace __LLM_CREDENTIAL_ID__ with your Nexus OpenRouter/LLM credential UUID",
-    "job_template_id": "Replace __JOB_TEMPLATE_ID__ with your AAP job template ID for 'platform-ops | Website Remediation'"
+    "credential_id (LLM)": "Replace __LLM_CREDENTIAL_ID__ with your Nexus OpenRouter/LLM credential UUID"
   },
+  "_note": "Job templates are referenced by name, not ID. Ensure 'platform-ops | Website Remediation' exists in AAP (run seed-aap.yml).",
   "triggers": [
     {
       "id": "trigger",
@@ -47,7 +47,6 @@
       "name": "Analyze Alert",
       "type": "aap_job_template",
       "config": {
-        "job_template_id": "__JOB_TEMPLATE_ID__",
         "job_template_name": "platform-ops | Website Remediation",
         "organization_name": "Default",
         "credential_id": "__AAP_CREDENTIAL_ID__",
@@ -133,7 +132,6 @@
       "name": "Run Remediation",
       "type": "aap_job_template",
       "config": {
-        "job_template_id": "__JOB_TEMPLATE_ID__",
         "job_template_name": "platform-ops | Website Remediation",
         "organization_name": "Default",
         "credential_id": "__AAP_CREDENTIAL_ID__",
@@ -204,7 +202,6 @@
       "name": "Manual Remediation",
       "type": "aap_job_template",
       "config": {
-        "job_template_id": "__JOB_TEMPLATE_ID__",
         "job_template_name": "platform-ops | Website Remediation",
         "organization_name": "Default",
         "credential_id": "__AAP_CREDENTIAL_ID__",
