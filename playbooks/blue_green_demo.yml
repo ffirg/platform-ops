@@ -19,7 +19,7 @@
 #   ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=cleanup"
 
 - name: Blue-Green Deployment Demo
-  hosts: all
+  hosts: all:!localhost
   gather_facts: true
 
   vars:
