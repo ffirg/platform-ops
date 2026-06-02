@@ -1,0 +1,264 @@
+{
+  "name": "EDA Auto-Remediation",
+  "description": "AI-assisted remediation triggered by EDA website monitoring alerts. Analyzes failures and auto-remediates or escalates.",
+  "schema_version": "2.0.0",
+  "_configuration_required": {
+    "credential_id (AAP)": "Replace __AAP_CREDENTIAL_ID__ with your Nexus AAP credential UUID",
+    "credential_id (LLM)": "Replace __LLM_CREDENTIAL_ID__ with your Nexus OpenRouter/LLM credential UUID",
+    "job_template_id": "Replace __JOB_TEMPLATE_ID__ with your AAP job template ID for 'platform-ops | Website Remediation'"
+  },
+  "triggers": [
+    {
+      "id": "trigger",
+      "name": "Trigger",
+      "type": "manual_trigger",
+      "config": {
+        "input_schema": {
+          "type": "object",
+          "required": ["alert_url", "alert_status"],
+          "properties": {
+            "alert_url": {
+              "type": "string",
+              "description": "URL that failed monitoring check"
+            },
+            "alert_status": {
+              "type": "string",
+              "default": "down",
+              "description": "Alert status (down, degraded, etc.)"
+            },
+            "alert_error": {
+              "type": "string",
+              "default": "unknown",
+              "description": "Error message from monitoring"
+            },
+            "alert_source": {
+              "type": "string",
+              "default": "eda",
+              "description": "Source of the alert"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "analyze_alert",
+      "name": "Analyze Alert",
+      "type": "aap_job_template",
+      "config": {
+        "job_template_id": "__JOB_TEMPLATE_ID__",
+        "job_template_name": "platform-ops | Website Remediation",
+        "organization_name": "Default",
+        "credential_id": "__AAP_CREDENTIAL_ID__",
+        "extra_vars": {
+          "alert_url": "${trigger.alert_url}",
+          "alert_status": "${trigger.alert_status}",
+          "alert_error": "${trigger.alert_error}",
+          "alert_source": "${trigger.alert_source}",
+          "remediation_operation": "analyze"
+        },
+        "limit": "localhost"
+      },
+      "outputs": {
+        "classification": "${result.artifacts.website_remediation.analysis.classification}",
+        "recommended_action": "${result.artifacts.website_remediation.analysis.recommended_action}",
+        "can_auto_remediate": "${result.artifacts.website_remediation.analysis.can_auto_remediate}",
+        "service_name": "${result.artifacts.website_remediation.analysis.service_name}",
+        "confidence": "${result.artifacts.website_remediation.analysis.confidence}"
+      }
+    },
+    {
+      "id": "ai_decision",
+      "name": "AI Decision",
+      "type": "agentic",
+      "config": {
+        "prompt": "You are an SRE assistant analyzing a website failure alert.\n\nAlert Details:\n- URL: ${trigger.alert_url}\n- Status: ${trigger.alert_status}\n- Error: ${trigger.alert_error}\n- Classification: ${analyze_alert.classification}\n- Service: ${analyze_alert.service_name}\n- Recommended Action: ${analyze_alert.recommended_action}\n- Can Auto-Remediate: ${analyze_alert.can_auto_remediate}\n- Confidence: ${analyze_alert.confidence}\n\nBased on this analysis, decide whether to:\n1. AUTO_REMEDIATE - If confidence is high and the issue is safe to fix automatically\n2. ESCALATE - If the issue requires human review or is too risky\n\nProvide your decision as JSON with these exact keys: decision, reason, risk_level",
+        "credential_id": "__LLM_CREDENTIAL_ID__",
+        "model": "anthropic/claude-sonnet-4",
+        "response_schema": {
+          "type": "object",
+          "required": ["decision", "reason", "risk_level"],
+          "properties": {
+            "decision": {
+              "type": "string",
+              "enum": ["AUTO_REMEDIATE", "ESCALATE"]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "risk_level": {
+              "type": "string",
+              "enum": ["low", "medium", "high"]
+            }
+          }
+        }
+      },
+      "outputs": {
+        "decision": "${result.result.content.decision}",
+        "reason": "${result.result.content.reason}",
+        "risk_level": "${result.result.content.risk_level}"
+      }
+    },
+    {
+      "id": "parse_decision",
+      "name": "Parse AI Decision",
+      "type": "script",
+      "config": {
+        "language": "python",
+        "code": "import json\nimport os\n\n# AI decision is now structured output\ndecision = os.getenv('DECISION', 'ESCALATE')\nreason = os.getenv('REASON', 'Unknown')\nrisk = os.getenv('RISK', 'high')\n\nresult = {\n    'decision': decision,\n    'should_auto_remediate': decision == 'AUTO_REMEDIATE',\n    'reason': reason,\n    'risk_level': risk\n}\nprint(json.dumps(result))",
+        "environment": {
+          "DECISION": "${ai_decision.result.content.decision}",
+          "REASON": "${ai_decision.result.content.reason}",
+          "RISK": "${ai_decision.result.content.risk_level}"
+        }
+      },
+      "outputs": {
+        "should_auto_remediate": "${result.stdout_json.should_auto_remediate}",
+        "decision": "${result.stdout_json.decision}",
+        "reason": "${result.stdout_json.reason}",
+        "risk_level": "${result.stdout_json.risk_level}"
+      }
+    },
+    {
+      "id": "check_decision",
+      "name": "Auto-Remediate?",
+      "type": "condition",
+      "config": {
+        "condition": "${parse_decision.should_auto_remediate} == True"
+      }
+    },
+    {
+      "id": "run_remediation",
+      "name": "Run Remediation",
+      "type": "aap_job_template",
+      "config": {
+        "job_template_id": "__JOB_TEMPLATE_ID__",
+        "job_template_name": "platform-ops | Website Remediation",
+        "organization_name": "Default",
+        "credential_id": "__AAP_CREDENTIAL_ID__",
+        "extra_vars": {
+          "alert_url": "${trigger.alert_url}",
+          "alert_status": "${trigger.alert_status}",
+          "alert_error": "${trigger.alert_error}",
+          "alert_source": "${trigger.alert_source}",
+          "remediation_operation": "remediate"
+        },
+        "limit": "localhost"
+      },
+      "outputs": {
+        "remediation_success": "${result.artifacts.website_remediation.remediation.success}",
+        "remediation_message": "${result.artifacts.website_remediation.remediation.message}"
+      }
+    },
+    {
+      "id": "check_remediation",
+      "name": "Remediation Successful?",
+      "type": "condition",
+      "config": {
+        "condition": "${run_remediation.remediation_success} == True"
+      }
+    },
+    {
+      "id": "notify_success",
+      "name": "Notify: Auto-Remediated",
+      "type": "script",
+      "config": {
+        "language": "python",
+        "code": "import json\nimport os\n\ndata = {\n    'outcome': 'auto_remediated',\n    'title': 'Auto-Remediation Successful',\n    'message': f\"Service {os.getenv('SERVICE')} was automatically remediated. Action: {os.getenv('ACTION')}\",\n    'url': os.getenv('URL'),\n    'classification': os.getenv('CLASSIFICATION'),\n    'ai_reason': os.getenv('AI_REASON')\n}\nprint(f\"=== {data['title']} ===\")\nprint(data['message'])\nprint(json.dumps(data))",
+        "environment": {
+          "URL": "${trigger.alert_url}",
+          "SERVICE": "${analyze_alert.service_name}",
+          "ACTION": "${analyze_alert.recommended_action}",
+          "CLASSIFICATION": "${analyze_alert.classification}",
+          "AI_REASON": "${parse_decision.reason}"
+        }
+      }
+    },
+    {
+      "id": "notify_failed",
+      "name": "Notify: Remediation Failed",
+      "type": "script",
+      "config": {
+        "language": "python",
+        "code": "import json\nimport os\n\ndata = {\n    'outcome': 'remediation_failed',\n    'title': 'Auto-Remediation Failed',\n    'message': f\"Auto-remediation of {os.getenv('URL')} failed. Manual intervention required.\",\n    'url': os.getenv('URL'),\n    'classification': os.getenv('CLASSIFICATION'),\n    'error': os.getenv('ERROR')\n}\nprint(f\"=== {data['title']} ===\")\nprint(data['message'])\nprint(json.dumps(data))",
+        "environment": {
+          "URL": "${trigger.alert_url}",
+          "CLASSIFICATION": "${analyze_alert.classification}",
+          "ERROR": "${trigger.alert_error}"
+        }
+      }
+    },
+    {
+      "id": "escalate_approval",
+      "name": "Escalation Review",
+      "type": "approval",
+      "config": {
+        "approvers": ["admin"],
+        "timeout": 3600,
+        "message": "AI recommends escalation for ${trigger.alert_url}. Reason: ${parse_decision.reason}. Risk: ${parse_decision.risk_level}. Approve to attempt manual remediation."
+      }
+    },
+    {
+      "id": "manual_remediation",
+      "name": "Manual Remediation",
+      "type": "aap_job_template",
+      "config": {
+        "job_template_id": "__JOB_TEMPLATE_ID__",
+        "job_template_name": "platform-ops | Website Remediation",
+        "organization_name": "Default",
+        "credential_id": "__AAP_CREDENTIAL_ID__",
+        "extra_vars": {
+          "alert_url": "${trigger.alert_url}",
+          "alert_status": "${trigger.alert_status}",
+          "alert_error": "${trigger.alert_error}",
+          "alert_source": "${trigger.alert_source}",
+          "remediation_operation": "remediate"
+        },
+        "limit": "localhost"
+      }
+    },
+    {
+      "id": "notify_escalated",
+      "name": "Notify: Escalated & Remediated",
+      "type": "script",
+      "config": {
+        "language": "python",
+        "code": "import json\nimport os\n\ndata = {\n    'outcome': 'escalated_remediated',\n    'title': 'Escalation Resolved',\n    'message': f\"Escalated issue for {os.getenv('URL')} was manually approved and remediated.\",\n    'url': os.getenv('URL'),\n    'classification': os.getenv('CLASSIFICATION'),\n    'ai_reason': os.getenv('AI_REASON')\n}\nprint(f\"=== {data['title']} ===\")\nprint(data['message'])\nprint(json.dumps(data))",
+        "environment": {
+          "URL": "${trigger.alert_url}",
+          "CLASSIFICATION": "${analyze_alert.classification}",
+          "AI_REASON": "${parse_decision.reason}"
+        }
+      }
+    },
+    {
+      "id": "notify_rejected",
+      "name": "Notify: Escalation Rejected",
+      "type": "script",
+      "config": {
+        "language": "python",
+        "code": "import json\nimport os\n\ndata = {\n    'outcome': 'escalation_rejected',\n    'title': 'Escalation Rejected',\n    'message': f\"Manual remediation for {os.getenv('URL')} was rejected. Issue remains unresolved.\",\n    'url': os.getenv('URL'),\n    'classification': os.getenv('CLASSIFICATION'),\n    'ai_reason': os.getenv('AI_REASON')\n}\nprint(f\"=== {data['title']} ===\")\nprint(data['message'])\nprint(json.dumps(data))",
+        "environment": {
+          "URL": "${trigger.alert_url}",
+          "CLASSIFICATION": "${analyze_alert.classification}",
+          "AI_REASON": "${parse_decision.reason}"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"from": "trigger", "to": "analyze_alert"},
+    {"from": "analyze_alert", "to": "ai_decision"},
+    {"from": "ai_decision", "to": "parse_decision"},
+    {"from": "parse_decision", "to": "check_decision"},
+    {"from": "check_decision", "to": "run_remediation", "from_port": "true"},
+    {"from": "check_decision", "to": "escalate_approval", "from_port": "false"},
+    {"from": "run_remediation", "to": "check_remediation"},
+    {"from": "check_remediation", "to": "notify_success", "from_port": "true"},
+    {"from": "check_remediation", "to": "notify_failed", "from_port": "false"},
+    {"from": "escalate_approval", "to": "manual_remediation", "from_port": "approved"},
+    {"from": "escalate_approval", "to": "notify_rejected", "from_port": "rejected"},
+    {"from": "manual_remediation", "to": "notify_escalated"}
+  ]
+}

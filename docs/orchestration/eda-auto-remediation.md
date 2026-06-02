@@ -280,6 +280,6 @@ curl http://192.168.138.212:9081
 
 ## Workflow JSON
 
-Location: `aap-orchestrator/imports/eda-auto-remediation.json`
+Location: `orchestrator/workflows/eda-auto-remediation.json`
 
-See [nexus-example-workflows.md](../../../aap-orchestrator/docs/nexus-example-workflows.md) for the full workflow definition.
+See [orchestrator/README.md](../../orchestrator/README.md) for import instructions.

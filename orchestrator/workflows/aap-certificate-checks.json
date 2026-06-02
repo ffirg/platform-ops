@@ -1,0 +1,127 @@
+{
+  "name": "AAP Certificate Checks",
+  "description": "Check AAP Platform SSL Certificates with per-certificate loop processing",
+  "schema_version": "2.0.0",
+  "_configuration_required": {
+    "credential_id": "Replace __AAP_CREDENTIAL_ID__ with your Nexus AAP credential UUID",
+    "job_template_id": "Replace __JOB_TEMPLATE_ID__ with your AAP job template ID for 'platform-ops | Check AAP Certificates'",
+    "aap_hostname": "Update default in trigger.config.input_schema.properties.aap_hostname.default"
+  },
+  "triggers": [
+    {
+      "id": "trigger",
+      "name": "Trigger",
+      "type": "manual_trigger",
+      "config": {
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "aap_hostname": {
+              "type": "string",
+              "default": "__YOUR_AAP_HOSTNAME__",
+              "description": "AAP Gateway hostname"
+            },
+            "cert_warning_days": {
+              "type": "integer",
+              "default": 30,
+              "description": "Days until expiry to trigger warning"
+            },
+            "cert_critical_days": {
+              "type": "integer",
+              "default": 14,
+              "description": "Days until expiry to trigger critical"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "discover_certs",
+      "name": "Discover AAP Certificates",
+      "type": "aap_job_template",
+      "config": {
+        "diff_mode": false,
+        "extra_vars": {
+          "aap_hostname": "${trigger.aap_hostname}",
+          "cert_output_json": true,
+          "cert_warning_days": "${trigger.cert_warning_days}",
+          "cert_critical_days": "${trigger.cert_critical_days}"
+        },
+        "credential_id": "__AAP_CREDENTIAL_ID__",
+        "job_template_id": "__JOB_TEMPLATE_ID__",
+        "job_template_name": "platform-ops | Check AAP Certificates",
+        "organization_name": "Default"
+      },
+      "outputs": {
+        "host": "${result.artifacts.cert_report.host}",
+        "summary": "${result.artifacts.cert_report.summary}",
+        "all_certs_json": "${result.artifacts.cert_report.certificates_json}"
+      }
+    },
+    {
+      "id": "post_collection",
+      "name": "Post-Collection Loop",
+      "type": "script",
+      "config": {
+        "code": "import json\nimport os\n\ncerts_json = os.getenv('CERTIFICATES', '[]')\ncerts = json.loads(certs_json)\n\n# Build list of cert data as JSON strings (env vars must be strings)\n# This avoids null values breaking the loop script\nprepared = []\nfor c in certs:\n    item = {\n        \"name\": c.get(\"name\", \"unknown\"),\n        \"path\": c.get(\"path\", \"unknown\"),\n        \"service\": c.get(\"service\", \"\"),\n        \"status\": c.get(\"status\", \"unknown\"),\n        \"days_remaining\": str(c.get(\"days_remaining\") or \"N/A\"),\n        \"expiry_date\": str(c.get(\"expiry_date\") or \"unknown\")\n    }\n    # Store as JSON string for safe env var passing\n    prepared.append(json.dumps(item))\n\nprint(json.dumps(prepared))",
+        "language": "python",
+        "environment": {
+          "CERTIFICATES": "${discover_certs.all_certs_json}"
+        }
+      },
+      "outputs": {
+        "cert_items": "${result.stdout_json}"
+      }
+    },
+    {
+      "id": "cert_checks",
+      "name": "Certificate Checks",
+      "type": "loop",
+      "config": {
+        "type": "for_each",
+        "items": "${post_collection.cert_items}"
+      }
+    },
+    {
+      "id": "actions",
+      "name": "Actions",
+      "type": "script",
+      "config": {
+        "code": "import json\nimport os\n\n# Parse cert data from JSON string (passed this way to handle nulls)\ncert_json = os.getenv('CERT_DATA', '{}')\ncert = json.loads(cert_json)\n\ncert_name = cert.get('name', 'unknown')\ncert_path = cert.get('path', 'unknown')\ncert_service = cert.get('service', '')\ncert_status = cert.get('status', 'unknown')\ndays_remaining = cert.get('days_remaining', 'N/A')\nexpiry_date = cert.get('expiry_date', 'unknown')\n\n# Build notification string with full details\ncert_desc = cert_name\nif cert_service:\n    cert_desc += f\" [{cert_service}]\"\nif cert_path:\n    cert_desc += f\" @ {cert_path}\"\n\n# Helper to safely convert days to int\ndef safe_days(d):\n    try:\n        return int(d)\n    except (ValueError, TypeError):\n        return None\n\n# Route based on status\nif cert_status == 'expired':\n    action = {\n        \"cert_name\": cert_name,\n        \"cert_path\": cert_path,\n        \"cert_service\": cert_service,\n        \"status\": \"expired\",\n        \"expiry_date\": expiry_date,\n        \"action\": \"immediate_renewal_required\",\n        \"priority\": \"P1\",\n        \"notification\": f\"EXPIRED: {cert_desc} - expired {expiry_date}\"\n    }\nelif cert_status == 'critical':\n    action = {\n        \"cert_name\": cert_name,\n        \"cert_path\": cert_path,\n        \"cert_service\": cert_service,\n        \"status\": \"critical\",\n        \"days_remaining\": safe_days(days_remaining),\n        \"action\": \"schedule_urgent_renewal\",\n        \"priority\": \"P2\",\n        \"notification\": f\"CRITICAL: {cert_desc} - {days_remaining} days remaining\"\n    }\nelif cert_status == 'warning':\n    action = {\n        \"cert_name\": cert_name,\n        \"cert_path\": cert_path,\n        \"cert_service\": cert_service,\n        \"status\": \"warning\",\n        \"days_remaining\": safe_days(days_remaining),\n        \"action\": \"plan_renewal\",\n        \"priority\": \"P3\",\n        \"notification\": f\"WARNING: {cert_desc} - {days_remaining} days remaining\"\n    }\nelif cert_status in ('missing', 'error'):\n    action = {\n        \"cert_name\": cert_name,\n        \"cert_path\": cert_path,\n        \"cert_service\": cert_service,\n        \"status\": cert_status,\n        \"days_remaining\": None,\n        \"action\": \"investigate\",\n        \"priority\": \"P1\",\n        \"notification\": f\"{cert_status.upper()}: {cert_desc} - certificate not found or unreadable\"\n    }\nelse:\n    action = {\n        \"cert_name\": cert_name,\n        \"cert_path\": cert_path,\n        \"cert_service\": cert_service,\n        \"status\": \"ok\",\n        \"days_remaining\": safe_days(days_remaining),\n        \"action\": \"none\",\n        \"priority\": \"P4\",\n        \"notification\": f\"OK: {cert_desc} - {days_remaining} days remaining\"\n    }\n\nprint(json.dumps(action))",
+        "language": "python",
+        "environment": {
+          "CERT_DATA": "${loop.item}"
+        }
+      },
+      "outputs": {
+        "action": "${result.stdout_json}"
+      }
+    },
+    {
+      "id": "consolidated_report",
+      "name": "Consolidated Report",
+      "type": "script",
+      "config": {
+        "code": "import json\nimport os\nfrom datetime import datetime\n\ncerts_json = os.getenv('CERTIFICATES', '[]')\nhost = os.getenv('HOST', 'unknown')\ncerts = json.loads(certs_json)\n\n# Group certs by status\nby_status = {'expired': [], 'critical': [], 'warning': [], 'ok': [], 'missing': [], 'error': []}\nfor c in certs:\n    status = c.get('status', 'unknown')\n    if status in by_status:\n        by_status[status].append(c)\n\n# Determine overall status\nif by_status['expired']:\n    overall = 'expired'\n    needs_action = True\nelif by_status['critical']:\n    overall = 'critical'\n    needs_action = True\nelif by_status['warning']:\n    overall = 'warning'\n    needs_action = True\nelif by_status['ok']:\n    overall = 'healthy'\n    needs_action = False\nelse:\n    overall = 'unknown'\n    needs_action = False\n\n# Build certificate details grouped by status\ndef format_cert(c):\n    name = c.get('name', 'unknown')\n    path = c.get('path', '')\n    service = c.get('service', '')\n    days = c.get('days_remaining')\n    expiry = c.get('expiry_date', '')\n    line = f\"  - {name}\"\n    if service:\n        line += f\" [{service}]\"\n    if path:\n        line += f\" @ {path}\"\n    if days is not None:\n        line += f\" - {days} days remaining\"\n    elif expiry:\n        line += f\" - expired {expiry}\"\n    return line\n\nsections = []\n\nif by_status['expired']:\n    lines = [format_cert(c) for c in by_status['expired']]\n    sections.append(f\"EXPIRED ({len(lines)}):\\n\" + '\\n'.join(lines))\n\nif by_status['critical']:\n    sorted_certs = sorted(by_status['critical'], key=lambda x: x.get('days_remaining', 999))\n    lines = [format_cert(c) for c in sorted_certs]\n    sections.append(f\"CRITICAL ({len(lines)}):\\n\" + '\\n'.join(lines))\n\nif by_status['warning']:\n    sorted_certs = sorted(by_status['warning'], key=lambda x: x.get('days_remaining', 999))\n    lines = [format_cert(c) for c in sorted_certs]\n    sections.append(f\"WARNING ({len(lines)}):\\n\" + '\\n'.join(lines))\n\nif by_status['ok']:\n    sorted_certs = sorted(by_status['ok'], key=lambda x: x.get('days_remaining', 9999))\n    lines = [format_cert(c) for c in sorted_certs]\n    sections.append(f\"OK ({len(lines)}):\\n\" + '\\n'.join(lines))\n\nif by_status['missing'] or by_status['error']:\n    problem_certs = by_status['missing'] + by_status['error']\n    lines = [format_cert(c) for c in problem_certs]\n    sections.append(f\"PROBLEMS ({len(lines)}):\\n\" + '\\n'.join(lines))\n\ncert_report = '\\n\\n'.join(sections) if sections else '(no certificates)'\n\nmessage = (\n    f\"AAP Certificate Report - {host}\\n\"\n    f\"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\\n\"\n    f\"Overall Status: {overall.upper()}\\n\"\n    f\"Processing Mode: per-certificate loop\\n\\n\"\n    f\"{cert_report}\"\n)\n\nreport = {\n    \"report_type\": \"aap_certificate_check\",\n    \"generated_at\": datetime.utcnow().isoformat() + \"Z\",\n    \"aap_hostname\": host,\n    \"overall_status\": overall,\n    \"summary\": {\n        \"total\": len(certs),\n        \"ok\": len(by_status['ok']),\n        \"warning\": len(by_status['warning']),\n        \"critical\": len(by_status['critical']),\n        \"expired\": len(by_status['expired']),\n        \"missing\": len(by_status['missing']),\n        \"error\": len(by_status['error'])\n    },\n    \"action_required\": needs_action,\n    \"processing_mode\": \"per_certificate\",\n    \"message\": message,\n    \"certificates\": certs\n}\n\nprint(json.dumps(report, indent=2))",
+        "language": "python",
+        "environment": {
+          "HOST": "${discover_certs.host}",
+          "CERTIFICATES": "${discover_certs.all_certs_json}"
+        }
+      },
+      "outputs": {
+        "report": "${result.stdout_json}"
+      }
+    }
+  ],
+  "edges": [
+    {"from": "trigger", "to": "discover_certs"},
+    {"from": "discover_certs", "to": "post_collection"},
+    {"from": "post_collection", "to": "cert_checks"},
+    {"from": "cert_checks", "to": "actions", "from_port": "iterate"},
+    {"from": "actions", "to": "cert_checks"},
+    {"from": "cert_checks", "to": "consolidated_report", "from_port": "complete"}
+  ]
+}

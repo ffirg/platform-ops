@@ -50,16 +50,19 @@ This repository provides the Ansible automation that powers Nexus workflow use c
 
 ### Workflow JSON Files
 
-Workflow definitions for import into Nexus are stored in the orchestrator repo:
+Workflow definitions for import into Nexus are included in this repository:
 
 ```
-aap-orchestrator/
-├── imports/           # Workflow JSON for import
-│   ├── certificate-check.json
-│   ├── blue-green-demo.json
-│   └── eda-auto-remediation.json
-└── exports/           # Exported working workflows
+platform-ops/
+└── orchestrator/
+    ├── README.md                      # Import instructions & configuration
+    └── workflows/
+        ├── aap-certificate-checks.json
+        ├── blue-green-deployment.json
+        └── eda-auto-remediation.json
 ```
+
+**To import:** See [orchestrator/README.md](orchestrator/README.md) for step-by-step instructions and placeholder configuration.
 
 ---
 

@@ -241,6 +241,6 @@ curl -X PATCH http://localhost:8000/api/v1/approvals/{approval_id} \
 
 ## Workflow JSON
 
-Location: `aap-orchestrator/imports/blue-green-demo.json`
+Location: `orchestrator/workflows/blue-green-deployment.json`
 
-See [nexus-example-workflows.md](../../../aap-orchestrator/docs/nexus-example-workflows.md) for the full workflow definition.
+See [orchestrator/README.md](../../orchestrator/README.md) for import instructions.

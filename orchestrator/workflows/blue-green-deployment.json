@@ -1,0 +1,201 @@
+{
+  "name": "Blue-Green Deployment Demo",
+  "description": "Deploys to inactive environment, health checks, approval, then switches traffic.",
+  "schema_version": "2.0.0",
+  "_configuration_required": {
+    "credential_id": "Replace with your Nexus AAP credential UUID",
+    "job_template_id": "Replace with your AAP job template ID for 'platform-ops | Blue-Green Demo'",
+    "limit": "Replace with your target host"
+  },
+  "triggers": [
+    {
+      "id": "trigger",
+      "name": "Trigger",
+      "type": "manual_trigger",
+      "config": {
+        "input_schema": {
+          "type": "object",
+          "required": ["bg_version"],
+          "properties": {
+            "bg_version": {
+              "type": "string",
+              "default": "v2.0.0",
+              "description": "Version to deploy (e.g., v2.0.0)"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "check_status",
+      "name": "Check Active Environment",
+      "type": "aap_job_template",
+      "config": {
+        "job_template_id": "__JOB_TEMPLATE_ID__",
+        "job_template_name": "platform-ops | Blue-Green Demo",
+        "organization_name": "Default",
+        "credential_id": "__AAP_CREDENTIAL_ID__",
+        "extra_vars": {
+          "bg_operation": "status"
+        },
+        "limit": "__TARGET_HOST__"
+      },
+      "outputs": {
+        "active_env": "${result.artifacts.blue_green.active_environment}"
+      }
+    },
+    {
+      "id": "calculate_target",
+      "name": "Calculate Target",
+      "type": "script",
+      "config": {
+        "language": "python",
+        "code": "import json\nimport os\n\nactive = os.getenv('ACTIVE_ENV', 'none')\ntarget = 'blue' if active == 'green' else 'green'\n\nprint(json.dumps({'active_env': active, 'target_env': target}))",
+        "environment": {
+          "ACTIVE_ENV": "${check_status.active_env}"
+        }
+      },
+      "outputs": {
+        "target_env": "${result.stdout_json.target_env}",
+        "active_env": "${result.stdout_json.active_env}"
+      }
+    },
+    {
+      "id": "deploy",
+      "name": "Deploy to Target",
+      "type": "aap_job_template",
+      "config": {
+        "job_template_id": "__JOB_TEMPLATE_ID__",
+        "job_template_name": "platform-ops | Blue-Green Demo",
+        "organization_name": "Default",
+        "credential_id": "__AAP_CREDENTIAL_ID__",
+        "extra_vars": {
+          "bg_operation": "deploy",
+          "bg_environment": "${calculate_target.target_env}",
+          "bg_version": "${trigger.bg_version}"
+        },
+        "limit": "__TARGET_HOST__"
+      },
+      "outputs": {
+        "deploy_endpoint": "${result.artifacts.blue_green.endpoint}"
+      }
+    },
+    {
+      "id": "health_check",
+      "name": "Health Check",
+      "type": "aap_job_template",
+      "config": {
+        "job_template_id": "__JOB_TEMPLATE_ID__",
+        "job_template_name": "platform-ops | Blue-Green Demo",
+        "organization_name": "Default",
+        "credential_id": "__AAP_CREDENTIAL_ID__",
+        "extra_vars": {
+          "bg_operation": "health_check",
+          "bg_environment": "${calculate_target.target_env}"
+        },
+        "limit": "__TARGET_HOST__"
+      },
+      "outputs": {
+        "health_status": "${result.artifacts.blue_green.status}"
+      }
+    },
+    {
+      "id": "is_healthy",
+      "name": "Healthy?",
+      "type": "condition",
+      "config": {
+        "condition": "${health_check.health_status} == \"success\""
+      }
+    },
+    {
+      "id": "approval",
+      "name": "Service Switch",
+      "type": "approval",
+      "config": {
+        "approvers": ["admin"],
+        "timeout": 3600,
+        "message": "Deployment ready. Approve to switch traffic."
+      }
+    },
+    {
+      "id": "switch_traffic",
+      "name": "Switch Traffic",
+      "type": "aap_job_template",
+      "config": {
+        "job_template_id": "__JOB_TEMPLATE_ID__",
+        "job_template_name": "platform-ops | Blue-Green Demo",
+        "organization_name": "Default",
+        "credential_id": "__AAP_CREDENTIAL_ID__",
+        "extra_vars": {
+          "bg_operation": "switch",
+          "bg_environment": "${calculate_target.target_env}"
+        },
+        "limit": "__TARGET_HOST__"
+      }
+    },
+    {
+      "id": "notify_success",
+      "name": "Notify: Success",
+      "type": "script",
+      "config": {
+        "language": "python",
+        "code": "import json\nimport os\n\ndata = {\n    'outcome': 'success',\n    'title': 'Deployment Successful',\n    'message': f\"Traffic switched to {os.getenv('TARGET')}. Version {os.getenv('VERSION')} is now live.\",\n    'active_env': os.getenv('TARGET'),\n    'version': os.getenv('VERSION')\n}\nprint(f\"=== {data['title']} ===\")\nprint(data['message'])\nprint(json.dumps(data))",
+        "environment": {
+          "TARGET": "${calculate_target.target_env}",
+          "VERSION": "${trigger.bg_version}"
+        }
+      },
+      "outputs": {
+        "notification": "${result.stdout_json}"
+      }
+    },
+    {
+      "id": "notify_health_failed",
+      "name": "Notify: Health Failed",
+      "type": "script",
+      "config": {
+        "language": "python",
+        "code": "import json\nimport os\n\ndata = {\n    'outcome': 'health_failed',\n    'title': 'Health Check Failed',\n    'message': f\"Deployment to {os.getenv('TARGET')} failed health checks. Traffic remains on {os.getenv('ACTIVE')}.\",\n    'active_env': os.getenv('ACTIVE'),\n    'version': os.getenv('VERSION')\n}\nprint(f\"=== {data['title']} ===\")\nprint(data['message'])\nprint(json.dumps(data))",
+        "environment": {
+          "TARGET": "${calculate_target.target_env}",
+          "ACTIVE": "${calculate_target.active_env}",
+          "VERSION": "${trigger.bg_version}"
+        }
+      },
+      "outputs": {
+        "notification": "${result.stdout_json}"
+      }
+    },
+    {
+      "id": "notify_rejected",
+      "name": "Notify: Rejected",
+      "type": "script",
+      "config": {
+        "language": "python",
+        "code": "import json\nimport os\n\ndata = {\n    'outcome': 'rejected',\n    'title': 'Switch Rejected',\n    'message': f\"Switch to {os.getenv('TARGET')} was rejected. Traffic remains on {os.getenv('ACTIVE')}.\",\n    'active_env': os.getenv('ACTIVE'),\n    'version': os.getenv('VERSION')\n}\nprint(f\"=== {data['title']} ===\")\nprint(data['message'])\nprint(json.dumps(data))",
+        "environment": {
+          "TARGET": "${calculate_target.target_env}",
+          "ACTIVE": "${calculate_target.active_env}",
+          "VERSION": "${trigger.bg_version}"
+        }
+      },
+      "outputs": {
+        "notification": "${result.stdout_json}"
+      }
+    }
+  ],
+  "edges": [
+    {"from": "trigger", "to": "check_status"},
+    {"from": "check_status", "to": "calculate_target"},
+    {"from": "calculate_target", "to": "deploy"},
+    {"from": "deploy", "to": "health_check"},
+    {"from": "health_check", "to": "is_healthy"},
+    {"from": "is_healthy", "to": "approval", "from_port": "true"},
+    {"from": "is_healthy", "to": "notify_health_failed", "from_port": "false"},
+    {"from": "approval", "to": "switch_traffic", "from_port": "approved"},
+    {"from": "approval", "to": "notify_rejected", "from_port": "rejected"},
+    {"from": "switch_traffic", "to": "notify_success"}
+  ]
+}

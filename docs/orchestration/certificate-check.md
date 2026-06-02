@@ -7,7 +7,7 @@ Automated certificate monitoring with conditional Jira ticket creation.
 | Attribute | Value |
 |-----------|-------|
 | **Trigger** | Manual |
-| **AAP Job Template** | `platform-ops \| Certificate Check` (ID: 26) |
+| **AAP Job Template** | `platform-ops \| Check AAP Certificates` |
 | **Playbook** | `playbooks/check-certs.yml` |
 | **Role** | `roles/check_server_certs/` |
 
@@ -28,10 +28,13 @@ Runs the certificate check playbook against target hosts.
 **Configuration:**
 ```json
 {
-  "job_template_id": 26,
+  "job_template_id": "__JOB_TEMPLATE_ID__",
+  "job_template_name": "platform-ops | Check AAP Certificates",
   "extra_vars": {}
 }
 ```
+
+Note: Replace `__JOB_TEMPLATE_ID__` with your actual AAP job template ID after running `seed-aap.yml`.
 
 **Output (via set_stats):**
 ```yaml
@@ -140,6 +143,6 @@ The playbook uses `set_stats` to return data under the `cert_check` key:
 
 ## Workflow JSON
 
-Location: `aap-orchestrator/imports/certificate-check.json`
+Location: `orchestrator/workflows/aap-certificate-checks.json`
 
-See [nexus-example-workflows.md](../../../aap-orchestrator/docs/nexus-example-workflows.md) for the full workflow definition.
+See [orchestrator/README.md](../../orchestrator/README.md) for import instructions.

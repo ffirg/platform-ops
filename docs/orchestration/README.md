@@ -68,29 +68,41 @@ ${check_certs.result.cert_check.expiring_soon} > 0
 
 ## Workflow Files
 
-Workflow JSON definitions are maintained in the orchestrator repo:
+Workflow JSON definitions are included in this repository for direct import into Nexus:
 
-| Location | Purpose |
-|----------|---------|
-| `aap-orchestrator/imports/` | Source workflow definitions for import |
-| `aap-orchestrator/exports/` | Exported working workflows (backup/reference) |
+```
+platform-ops/
+└── orchestrator/
+    ├── README.md                      # Import instructions
+    └── workflows/
+        ├── aap-certificate-checks.json
+        ├── blue-green-deployment.json
+        └── eda-auto-remediation.json
+```
+
+**Import Instructions:** See [orchestrator/README.md](../../orchestrator/README.md) for configuration placeholders and step-by-step import guide.
 
 ## Quick Reference
 
-### AAP Job Template IDs
+### AAP Job Templates
 
-| ID | Template | Playbook |
-|----|----------|----------|
-| 26 | `platform-ops \| Certificate Check` | `check-certs.yml` |
-| 27 | `platform-ops \| Blue-Green Demo` | `blue_green_demo.yml` |
-| 28 | `platform-ops \| Website Remediation` | `website_remediation.yml` |
+| Template | Playbook | Created By |
+|----------|----------|------------|
+| `platform-ops \| Check Server Certificates` | `check-certs.yml` | `seed-aap.yml` |
+| `platform-ops \| Check AAP Certificates` | `check-aap-certs.yml` | `seed-aap.yml` |
+| `platform-ops \| Blue-Green Demo` | `blue_green_demo.yml` | `seed-aap.yml` |
+| `platform-ops \| Website Remediation` | `website_remediation.yml` | `seed-aap.yml` |
 
-### AAP Credential IDs
+**Note:** Job template IDs are environment-specific. Run `seed-aap.yml` to create templates, then get IDs from your AAP instance.
 
-| ID | Credential | Purpose |
-|----|------------|---------|
-| `68904b3c-...` | AAP Credential | Workflow → AAP authentication |
-| `f2b8dfe2-...` | OpenRouter LLM | Agentic AI node (auto-remediation) |
+### Nexus Credentials Required
+
+| Credential Type | Purpose | Workflow |
+|-----------------|---------|----------|
+| AAP Credential | Authenticate to AAP API | All workflows |
+| OpenRouter/LLM Credential | AI decision-making | EDA Auto-Remediation only |
+
+Create these in Nexus UI → Credentials before importing workflows.
 
 ### Nexus API
 
