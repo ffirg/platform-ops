@@ -76,6 +76,15 @@ ansible-playbook playbooks/seed-aap.yml
 
 Extensible certificate checking for any server, with specialized support for AAP infrastructure.
 
+**Required AAP Credentials:**
+
+| Credential | Type | Purpose |
+|------------|------|---------|
+| Platform Ops AAP | Red Hat Ansible Automation Platform | Gateway API access to discover AAP nodes |
+| Platform Ops Machine | Machine | SSH access to check certificates on discovered nodes |
+
+Create these in **AAP → Credentials** before running the certificate check job template.
+
 **Features:**
 - **Auto-discovery**: Finds certificates automatically if no explicit paths provided
 - **AAP-specific support**: Automatic discovery of AAP components (containerized, OpenShift, Kubernetes)

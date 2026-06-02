@@ -89,39 +89,11 @@
           ansible_connection: local
           ansible_python_interpreter: "{{ '{{' }} ansible_playbook_python {{ '}}' }}"
 
-    # Custom credential type for AAP Gateway authentication
-    # Injects AAP_HOST, AAP_USERNAME, AAP_PASSWORD as environment variables
-    controller_credential_types:
-      - name: "AAP Gateway Credential"
-        kind: cloud
-        description: "Credentials for AAP Gateway API authentication (injected as env vars)"
-        inputs:
-          fields:
-            - id: aap_host
-              type: string
-              label: AAP Hostname
-              help_text: "AAP Gateway hostname (e.g., carmaap1.lan)"
-            - id: aap_username
-              type: string
-              label: AAP Username
-              help_text: "Username with API access"
-            - id: aap_password
-              type: string
-              label: AAP Password
-              secret: true
-              help_text: "Password for the AAP user"
-          required:
-            - aap_host
-            - aap_username
-            - aap_password
-        injectors:
-          env:
-            AAP_HOST: "{{ '{{' }} aap_host {{ '}}' }}"
-            AAP_USERNAME: "{{ '{{' }} aap_username {{ '}}' }}"
-            AAP_PASSWORD: "{{ '{{' }} aap_password {{ '}}' }}"
-
-    # Credentials - placeholder machine credential for SSH access
-    # First-time users must update this credential in AAP with valid SSH key/password
+    # Credentials - users must update these in AAP with valid values after seeding
+    #
+    # Required credentials:
+    #   1. Platform Ops Machine - SSH access to managed nodes
+    #   2. Platform Ops AAP - Gateway API access for node discovery (uses built-in type)
     controller_credentials:
       - name: "Platform Ops Machine"
         organization: "Default"
@@ -130,14 +102,13 @@
         inputs:
           username: "your_user"
 
-      - name: "Platform Ops AAP Gateway"
+      - name: "Platform Ops AAP"
         organization: "Default"
-        credential_type: "AAP Gateway Credential"
+        credential_type: "Red Hat Ansible Automation Platform"
         description: "AAP Gateway API credentials for node discovery - UPDATE WITH VALID CREDENTIALS"
         inputs:
-          aap_host: "your_aap_hostname"
-          aap_username: "your_username"
-          aap_password: "your_password"
+          host: "https://your_aap_hostname"
+          verify_ssl: false
 
     # Job Templates - prefix with repo name for clarity
     controller_templates:
@@ -157,7 +128,7 @@
         inventory: "AAP Infrastructure"
         credentials:
           - "Platform Ops Machine"
-          - "Platform Ops AAP Gateway"
+          - "Platform Ops AAP"
         ask_variables_on_launch: true
 
       - name: "platform-ops | Setup Test Certs"
@@ -223,18 +194,13 @@
             - Project: Platform Ops
             - Inventory: Platform Ops (managed nodes for certificate testing)
             - Inventory: AAP Infrastructure (dynamically populated by check-aap-certs.yml)
-            - Credential Type: AAP Gateway Credential (injects AAP_HOST, AAP_USERNAME, AAP_PASSWORD as env vars)
             - Credential: Platform Ops Machine (SSH credential)
-            - Credential: Platform Ops AAP Gateway (Gateway API access)
-            - Job Template: platform-ops | Check Server Certificates
-            - Job Template: platform-ops | Check AAP Certificates
-            - Job Template: platform-ops | Setup Test Certs
-            - Job Template: platform-ops | Test Certificate Expiry
+            - Credential: Platform Ops AAP (Red Hat Ansible Automation Platform type)
+            - Job Templates: Check Certificates, Blue-Green Demo, Website Remediation
 
           IMPORTANT: First-time setup required!
-            1. Edit "Platform Ops Machine" credential - add SSH private key or password
-            2. Edit "Platform Ops AAP Gateway" credential - add AAP hostname, username, password
-            3. Credentials are injected as environment variables (never exposed in logs)
+            1. Edit "Platform Ops Machine" credential - add SSH username and private key
+            2. Edit "Platform Ops AAP" credential - add AAP hostname, username, password
 
           Job Templates:
             - platform-ops | Check Server Certificates

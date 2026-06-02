@@ -13,7 +13,7 @@
 #
 # AAP EXECUTION:
 #   - Create job template with this playbook
-#   - Attach "Platform Ops AAP Gateway" credential (injects AAP_HOST, AAP_USERNAME, AAP_PASSWORD)
+#   - Attach "Red Hat Ansible Automation Platform" credential (built-in type)
 #   - Attach "Platform Ops Machine" credential for SSH
 #   - Inventory can be any with localhost (or AAP Infrastructure after first run)
 #
@@ -37,8 +37,10 @@
     _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null || true', errors='ignore') }}"
 
     # Credential resolution chain: keychain → env → extra vars
+    # Supports both AAP_HOST (custom) and AAP_HOSTNAME (built-in Red Hat AAP credential type)
     gateway_hostname: >-
       {{ _keychain_host |
+         default(lookup('env', 'AAP_HOSTNAME'), true) |
          default(lookup('env', 'AAP_HOST'), true) |
          default(aap_hostname | default(''), true) }}
     gateway_username: >-

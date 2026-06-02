@@ -28,12 +28,13 @@
     gateway_username: "{{ gateway_username }}"
     gateway_password: "{{ gateway_password }}"
     gateway_validate_certs: "{{ gateway_validate_certs }}"
+  register: _token_result
   no_log: true
 
 - name: Store OAuth token for later use
   ansible.builtin.set_fact:
-    _oauth_token: "{{ aap_token.token }}"
-    _oauth_token_obj: "{{ aap_token }}"
+    _oauth_token: "{{ _token_result.token | default(aap_token.token) }}"
+    _oauth_token_obj: "{{ _token_result | default(aap_token) }}"
   no_log: true
 
 - name: Discover AAP infrastructure
