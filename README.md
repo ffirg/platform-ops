@@ -1,116 +1,78 @@
 # platform-ops
 
-Automated certificate lifecycle management for enterprise infrastructure. Monitors SSL/TLS certificates across servers, detects expiring or expired certificates, and provides structured JSON output for integration with monitoring dashboards and self-service portals.
+Automated operations for enterprise infrastructure, designed for Red Hat Ansible Automation Platform (AAP) and Nexus Orchestrator integration.
 
-Built for Red Hat Ansible Automation Platform (AAP) with support for containerized, OpenShift, and Kubernetes deployments.
+## Capabilities
 
-## Getting Started
+| Domain | Description |
+|--------|-------------|
+| **Certificate Management** | SSL/TLS certificate monitoring with auto-discovery, expiry alerts, and structured output |
+| **Blue-Green Deployments** | Zero-downtime deployments with traffic switching and approval gates |
+| **Website Remediation** | AI-assisted incident analysis and auto-remediation for service failures |
+
+## Quick Start
 
 ```bash
 git clone https://github.com/ffirg/platform-ops.git
 cd platform-ops
 ```
 
-## Prerequisites
-
-### macOS Keychain Setup (Recommended)
-
-Store AAP credentials securely in macOS Keychain. Use EITHER token OR username/password, not both.
+### AAP Bootstrap
 
 ```bash
-# Hostname (always required)
-security add-generic-password -s "aap-credentials" -a "aap-hostname" -w "your-aap-host.example.com"
-
-# Option 1: Token auth (preferred)
-security add-generic-password -s "aap-credentials" -a "aap-token" -w "your-oauth-token"
-
-# Option 2: Basic auth
-security add-generic-password -s "aap-credentials" -a "aap-username" -w "admin"
-security add-generic-password -s "aap-credentials" -a "aap-password" -w "yourpassword"
-
-# Verify
-security find-generic-password -s "aap-credentials" -a "aap-token" -w  # or aap-username
-```
-
-Playbooks automatically retrieve credentials from keychain, with environment variables as fallback (`AAP_HOST`, `AAP_TOKEN` or `AAP_USERNAME`/`AAP_PASSWORD`).
-
-### Target Host Requirements
-
-For `community.crypto` modules, install on target hosts:
-
-```bash
-dnf install python3-cryptography    # RHEL/CentOS/Fedora
-apt install python3-cryptography    # Debian/Ubuntu
-```
-
-## AAP Seeding
-
-### Requirements
-
-- `infra.aap_configuration` collection
-- AAP credentials in keychain or environment variables
-
-### Usage
-
-Bootstrap AAP with the Platform Ops project and job templates:
-
-```bash
-# Using keychain credentials (recommended)
-ansible-playbook playbooks/seed-aap.yml
-
-# Or with environment variables
-export AAP_HOST=your-aap-host.example.com
-export AAP_USERNAME=admin
-export AAP_PASSWORD=yourpassword
+# Configure credentials (see Prerequisites below)
 ansible-playbook playbooks/seed-aap.yml
 ```
 
-This creates:
-- **Project**: Platform Ops (linked to this GitHub repo)
-- **Credential**: Platform Ops Machine (SSH credential placeholder)
-- **Inventories**:
-  - Platform Ops (managed nodes for certificate testing)
-  - Platform Ops - AAP (AAP infrastructure hosts)
-- **Job Templates**:
-  - `platform-ops | Check Server Certificates`
-  - `platform-ops | Check AAP Certificates`
-  - `platform-ops | Setup Test Certs`
-  - `platform-ops | Test Certificate Expiry`
+This creates the Platform Ops project, inventories, credentials, and job templates in AAP.
 
-### First-Time Setup
+---
 
-After seeding, you must configure the SSH credential for job templates to connect to target hosts:
+## Nexus Orchestrator Integration
 
-1. Navigate to **Resources → Credentials** in AAP
-2. Edit the **Platform Ops Machine** credential
-3. Add your SSH private key or password
-4. Optionally update **Resources → Inventories → Platform Ops** with your target hosts
+This repository provides the Ansible automation that powers Nexus workflow use cases. Each workflow combines AAP job templates with orchestration logic (conditions, approvals, AI decisions).
+
+### Workflow Use Cases
+
+| Workflow | Description | Job Template |
+|----------|-------------|--------------|
+| **Certificate Expiration Check** | Check certs → conditional Jira ticket → notification | `platform-ops \| Certificate Check` |
+| **Blue-Green Deployment** | Deploy → health check → approval → traffic switch | `platform-ops \| Blue-Green Demo` |
+| **EDA Auto-Remediation** | Analyze failure → AI decision → auto-fix or escalate | `platform-ops \| Website Remediation` |
 
 ### AAP Job Templates
 
-| Job Template | Description |
-|--------------|-------------|
-| `platform-ops \| Check Server Certificates` | Check certificates on managed nodes with auto-discovery |
-| `platform-ops \| Check AAP Certificates` | Check certificates on AAP infrastructure (Gateway API discovery) |
-| `platform-ops \| Setup Test Certs` | Generate test CA and server certificates on target hosts |
-| `platform-ops \| Test Certificate Expiry` | Create certificates with specific expiry scenarios (ok/warning/critical/expired) |
+| ID | Job Template | Playbook | Description |
+|----|--------------|----------|-------------|
+| 26 | `platform-ops \| Certificate Check` | `check-certs.yml` | Check certificates with auto-discovery |
+| 27 | `platform-ops \| Blue-Green Demo` | `blue_green_demo.yml` | Multi-operation deployment (status/deploy/health/switch/cleanup) |
+| 28 | `platform-ops \| Website Remediation` | `website_remediation.yml` | Analyze and remediate website failures |
 
-### AAP Node Discovery
+### Workflow JSON Files
 
-The `discover_aap_nodes` role queries the Gateway API and dynamically adds discovered hosts to the inventory using `add_host`. This enables playbooks like `check-aap-certs.yml` to work in AAP job templates without requiring a pre-populated inventory.
+Workflow definitions for import into Nexus are stored in the orchestrator repo:
 
-## Certificate Checking
+```
+aap-orchestrator/
+├── imports/           # Workflow JSON for import
+│   ├── certificate-check.json
+│   ├── blue-green-demo.json
+│   └── eda-auto-remediation.json
+└── exports/           # Exported working workflows
+```
 
-Extensible certificate checking for any server, with specialized support for Red Hat Ansible Automation Platform (AAP).
+---
+
+## Certificate Management
+
+Extensible certificate checking for any server, with specialized support for AAP.
 
 ### Features
 
 - **Auto-discovery**: Finds certificates automatically if no explicit paths provided
-- **File-based checking**: Check certificate files on hosts via SSH
-- **Certificate chain tracking**: Full chain information including root CA and intermediates
-- **Multiple output formats**: Console, Markdown, JSON (for API/portal integration)
 - **AAP-specific support**: Automatic discovery of AAP components (containerized, OpenShift, Kubernetes)
-- **Configurable thresholds**: Warning and critical day thresholds for expiry alerts
+- **Multiple output formats**: Console, Markdown, JSON (for API/portal integration)
+- **Configurable thresholds**: Warning (30 days) and critical (14 days) alerts
 
 ### Playbooks
 
@@ -120,152 +82,216 @@ Extensible certificate checking for any server, with specialized support for Red
 | `check-aap-certs.yml` | AAP-specific certificate discovery and checking |
 | `setup-test-certs.yml` | Generate test certificates on target hosts |
 | `test-cert-expiry.yml` | Create certificates with specific expiry scenarios |
-| `seed-aap.yml` | Bootstrap AAP with project and job templates |
 
-### Roles
+### Usage
+
+```bash
+# Check all certificates on a server (auto-discovery)
+ansible-playbook playbooks/check-certs.yml -i myserver.example.com,
+
+# Check AAP certificates (auto-discovers nodes from Gateway API)
+ansible-playbook playbooks/check-aap-certs.yml
+```
+
+### Orchestrator Integration
+
+The certificate check workflow uses `set_stats` to return structured data:
+
+```yaml
+# Output structure (under cert_check key)
+cert_check:
+  total_checked: 5
+  expiring_soon: 1
+  already_expired: 0
+  certificates:
+    - name: "Nginx SSL"
+      status: "warning"
+      days_remaining: 20
+```
+
+Nexus workflow conditions evaluate `${check_certs.result.cert_check.expiring_soon} > 0` to route to Jira ticket creation.
+
+---
+
+## Blue-Green Deployments
+
+Zero-downtime deployment pattern using containerized environments with approval gates.
+
+### Architecture
+
+```
+┌─────────────┐     ┌─────────────┐
+│    Blue     │     │    Green    │
+│  (9081)     │     │  (9082)     │
+└──────┬──────┘     └──────┬──────┘
+       │                   │
+       └───────┬───────────┘
+               │
+        ┌──────┴──────┐
+        │   Active    │
+        │  Symlink    │
+        └─────────────┘
+```
+
+### Operations
+
+The `blue_green_demo.yml` playbook supports multiple operations via `bg_operation`:
+
+| Operation | Description |
+|-----------|-------------|
+| `status` | Check which environment is currently active |
+| `deploy` | Deploy version to specified environment |
+| `health_check` | Verify container is running and responding |
+| `switch` | Update active symlink to new environment |
+| `cleanup` | Remove all demo containers and files |
+
+### Usage
+
+```bash
+# Check current status
+ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=status"
+
+# Deploy v2.0 to blue environment
+ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=deploy bg_environment=blue bg_version=v2.0"
+
+# Health check blue
+ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=health_check bg_environment=blue"
+
+# Switch traffic to blue
+ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=switch bg_environment=blue"
+```
+
+### Orchestrator Integration
+
+The Nexus workflow sequences these operations with an approval gate before switching:
+
+```
+Deploy → Health Check → Healthy?
+                         ├─ Yes → Approval → Approved? → Switch → Notify
+                         │                   └─ Rejected → Notify
+                         └─ No → Notify Failed
+```
+
+---
+
+## Website Remediation
+
+AI-assisted incident analysis and auto-remediation for EDA-triggered alerts.
+
+### Operations
+
+| Operation | Description |
+|-----------|-------------|
+| `analyze` | Classify failure type and recommend action |
+| `remediate` | Execute remediation action |
+
+### Failure Classifications
+
+| Classification | Recommended Action | Auto-Remediate |
+|----------------|-------------------|----------------|
+| `connection_refused` | `restart_service` | ✅ Yes |
+| `connection_timeout` | `restart_service` | ✅ Yes |
+| `http_500` | `restart_service` | ✅ Yes |
+| `dns_failure` | `check_dns` | ❌ No |
+| `ssl_error` | `check_ssl` | ❌ No |
+| `http_502` | `check_upstream` | ❌ No |
+| `http_503` | `check_capacity` | ❌ No |
+
+### Orchestrator Integration
+
+The EDA Auto-Remediation workflow uses an **agentic AI node** to decide whether to auto-remediate or escalate:
+
+```
+Analyze Alert → AI Decision → Auto-Remediate?
+                               ├─ Yes (low risk) → Run Remediation → Notify
+                               └─ No (high risk) → Approval → Manual Fix → Notify
+```
+
+The AI evaluates failure context and returns a structured decision with risk assessment.
+
+---
+
+## Roles
 
 | Role | Description |
 |------|-------------|
-| `discover_aap_nodes` | Discovers AAP nodes from Gateway API and adds to inventory via `add_host` |
+| `discover_aap_nodes` | Discovers AAP nodes from Gateway API via `add_host` |
 | `check_server_certs` | Orchestrates certificate checking with auto-discovery |
 | `check_aap_certs` | AAP-specific certificate discovery and checking |
 | `check_cert_file` | Check a single certificate file |
 | `cert_report` | Generate reports (console, markdown, JSON) |
 | `cert_common` | Shared defaults and variables |
+| `blue_green_demo` | Blue-green deployment operations |
+| `website_remediation` | Website failure analysis and remediation |
 
-### Usage Examples
+---
 
-#### Check all certificates on a server (auto-discovery)
+## Prerequisites
 
-```bash
-ansible-playbook playbooks/check-certs.yml -i myserver.example.com,
-```
+### macOS Keychain Setup
 
-#### Check specific certificate files
-
-```yaml
-# In your playbook or via -e
-cert_checks:
-  - name: "Nginx SSL"
-    type: file
-    path: /etc/nginx/ssl/server.crt
-  - name: "PostgreSQL TLS"
-    type: file
-    path: /var/lib/pgsql/data/server.crt
-```
-
-#### Check AAP certificates
+Store AAP credentials securely:
 
 ```bash
-# Auto-discover AAP nodes from Gateway API (uses discover_aap_nodes role)
-ansible-playbook playbooks/check-aap-certs.yml
+# Hostname (required)
+security add-generic-password -s "aap-credentials" -a "aap-hostname" -w "your-aap-host.example.com"
 
-# Or use static inventory
-ansible-playbook playbooks/check-aap-certs.yml -i inventory/aap.yml
+# Token auth (preferred)
+security add-generic-password -s "aap-credentials" -a "aap-token" -w "your-oauth-token"
+
+# Or basic auth
+security add-generic-password -s "aap-credentials" -a "aap-username" -w "admin"
+security add-generic-password -s "aap-credentials" -a "aap-password" -w "yourpassword"
 ```
 
-The playbook automatically discovers AAP nodes from the Gateway API using the `discover_aap_nodes` role. Requires keychain credentials or environment variables configured.
+### Target Host Requirements
 
-### Output Formats
-
-#### Console Output
-
-```
-═══════════════════════════════════════════════════════════════════════════════════════
-                           CERTIFICATE EXPIRY REPORT
-═══════════════════════════════════════════════════════════════════════════════════════
-Host: server1.example.com
-Platform: linux
-Check Date: 2026-04-30T10:00:00Z
-Thresholds: Warning=30 days, Critical=14 days
-───────────────────────────────────────────────────────────────────────────────────────
-CERTIFICATE               STATUS     SOURCE       DAYS   KEY             ISSUER
-Nginx SSL                 [OK]       Let's Encrypt  145  rsaEncryption   R3
-PostgreSQL TLS            [WARNING]  Self-Signed     12  rsaEncryption   localhost
-───────────────────────────────────────────────────────────────────────────────────────
-SUMMARY: Total=2 | OK=1 | Warning=1 | Critical=0 | Expired=0 | Missing=0
+For certificate checking:
+```bash
+dnf install python3-cryptography    # RHEL/CentOS/Fedora
 ```
 
-#### JSON Output (for API/Portal Integration)
-
-The playbook outputs structured JSON that can be consumed by external services such as:
-
-- **Self-Service Portals**: Display certificate status in user dashboards
-- **Monitoring Systems**: Feed certificate data into Prometheus, Grafana, or Splunk
-- **CMDB Integration**: Update configuration management databases with certificate inventory
-- **Alerting Pipelines**: Trigger notifications via webhooks or message queues
-- **Compliance Reporting**: Generate audit-ready certificate inventory reports
-
-The JSON is output as a single line prefixed with `CERT_REPORT_JSON=` for easy parsing:
-
-```json
-{
-  "host": "server1.example.com",
-  "platform": "Linux",
-  "checkDate": "2026-04-30T10:00:00Z",
-  "thresholds": {
-    "warningDays": 30,
-    "criticalDays": 14
-  },
-  "summary": {
-    "total": 2,
-    "ok": 1,
-    "warning": 1,
-    "critical": 0,
-    "expired": 0,
-    "missing": 0
-  },
-  "certificates": [
-    {
-      "name": "Nginx SSL",
-      "path": "/etc/nginx/ssl/server.crt",
-      "type": "file",
-      "status": "ok",
-      "days_remaining": 145,
-      "expiry_date": "20260922100000Z",
-      "subject": "server1.example.com",
-      "issuer": "R3",
-      "serial": "123456789",
-      "key_algorithm": "RSA",
-      "key_size": 2048,
-      "sig_algorithm": "sha256WithRSAEncryption",
-      "chain": {
-        "depth": 3,
-        "root_ca": "ISRG Root X1",
-        "is_self_signed": false,
-        "chain_valid": true
-      },
-      "service": "nginx",
-      "source": "Let's Encrypt"
-    }
-  ]
-}
+For blue-green deployments:
+```bash
+dnf install podman                  # Container runtime
 ```
 
-### Configuration
+---
+
+## Configuration
+
+### Certificate Checking
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `cert_warning_days` | 30 | Days before expiry to trigger warning |
 | `cert_critical_days` | 14 | Days before expiry to trigger critical |
-| `cert_show_paths` | false | Show file paths in output |
-| `cert_show_chain` | true | Show certificate chain info |
 | `cert_output_json` | true | Output JSON for API consumption |
-| `cert_report_file` | "" | Path to save markdown report |
-| `cert_fail_on_expired` | true | Fail playbook if expired certs found |
-| `cert_fail_on_critical` | false | Fail playbook if critical certs found |
-| `cert_fail_on_warning` | false | Fail playbook if warning certs found |
 
-### Requirements
+### Blue-Green Demo
 
-- Ansible 2.9+
-- `community.crypto` collection
-- `python3-cryptography` on target hosts
-- For AAP: podman (containerized), oc (OpenShift), or kubectl (Kubernetes)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `bg_operation` | `status` | Operation to perform |
+| `bg_environment` | - | Target environment (blue/green) |
+| `bg_version` | - | Version to deploy |
+| `bg_port_blue` | 9081 | Blue environment port |
+| `bg_port_green` | 9082 | Green environment port |
+
+---
 
 ## Testing
 
-See [docs/testing/certificate-check-test-plan.md](docs/testing/certificate-check-test-plan.md) for the certificate checking test plan and execution log.
+- [Certificate Check Test Plan](docs/testing/certificate-check-test-plan.md)
+
+---
+
+## Related Documentation
+
+- [Nexus Example Workflows](../aap-orchestrator/docs/nexus-example-workflows.md) — Full workflow documentation
+- [Nexus Workflow Schemas](../aap-orchestrator/docs/nexus-workflow-schemas-verified.md) — JSON schema reference
+
+---
 
 ## License
 
