@@ -1,26 +1,21 @@
 ---
 # roles/discover_aap_nodes/defaults/main.yml
 # Default variables for AAP node discovery
-
 # AAP Gateway connection
 # Resolved by playbook from keychain → env → extra vars
 # gateway_hostname: required
 # gateway_username: required (for OAuth token creation)
 # gateway_password: required (for OAuth token creation)
 gateway_validate_certs: false
-
 # Default platform for discovered hosts
 aap_platform: containerized
-
 # Certificate check thresholds (applied to discovered hosts)
 cert_warning_days: 30
 cert_critical_days: 14
-
 # Inventory creation options
 create_aap_inventory: true
-aap_inventory_name: "AAP Infrastructure"
-aap_organization: "Default"
-
+aap_inventory_name: AAP Infrastructure
+aap_organization: Default
 # Target host Python interpreter
 # Set explicitly to avoid Ansible discovering wrong Python version
 # (cryptography may be installed in different Python than Ansible discovers)

@@ -1,7 +1,6 @@
 ---
 - name: Website Monitoring Rulebook
   hosts: all
-
   sources:
     - name: Monitor critical websites
       ansible.eda.url_check:
@@ -12,7 +11,6 @@
           - https://carmaap1.lan
           - http://localhost:9081
           - http://localhost:9082
-
   rules:
     - name: Website is down - trigger remediation workflow
       condition:
@@ -24,12 +22,12 @@
           - event.url_check.url
       action:
         run_job_template:
-          name: "platform-ops | Website Remediation"
-          organization: "Default"
+          name: platform-ops | Website Remediation
+          organization: Default
           job_args:
             extra_vars:
               alert_url: "{{ event.url_check.url }}"
               alert_status: "{{ event.url_check.status }}"
               alert_error: "{{ event.url_check.error | default('unknown') }}"
               alert_timestamp: "{{ event.received_at }}"
-              alert_source: "eda"
+              alert_source: eda

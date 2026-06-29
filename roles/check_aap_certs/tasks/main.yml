@@ -1,27 +1,24 @@
 ---
 # roles/check_aap_certs/tasks/main.yml
 # AAP-specific certificate checking - discovers and checks AAP components
-
 # Preflight check for required Python library
+
 - name: Check for python3-cryptography library
   ansible.builtin.command:
     cmd: "{{ ansible_python_interpreter | default('/usr/bin/python3') }} -c 'import cryptography; print(cryptography.__version__)'"
-  register: _crypto_check
   changed_when: false
   failed_when: false
+  register: _crypto_check
 
 - name: Fail if cryptography library is missing
   ansible.builtin.fail:
     msg: |
       PREFLIGHT CHECK FAILED: python3-cryptography is not installed on {{ inventory_hostname }}
-
       The community.crypto modules require the cryptography Python library (>= 3.3).
-
       To fix, run on the target host:
         RHEL/CentOS/Fedora: dnf install python3-cryptography
         Debian/Ubuntu:      apt install python3-cryptography
         pip:                pip3 install cryptography
-
       Detected Python: {{ ansible_python_interpreter | default('/usr/bin/python3') }}
   when: _crypto_check.rc != 0
 
@@ -34,8 +31,8 @@
   ansible.builtin.set_fact:
     cert_results: []
     cert_checks: []
-
 # Platform auto-detection
+
 - name: Auto-detect AAP platform type
   when: aap_platform == 'auto'
   block:
@@ -43,11 +40,11 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          podman ps --format '{{ '{{' }}.Names{{ '}}' }}' 2>/dev/null | grep -qE '^automation-' && echo "containerized" || echo ""
+          podman ps --format '{{ '{{' }}.Names{{ ' }}' }}' 2>/dev/null | grep -qE '^automation-' && echo "containerized" || echo ""
         executable: /bin/bash
-      register: _check_containerized
       changed_when: false
       failed_when: false
+      register: _check_containerized
 
     - name: Check for OpenShift AAP
       ansible.builtin.shell:
@@ -55,10 +52,10 @@
           set -o pipefail
           oc get pods -n "{{ aap_namespace }}" 2>/dev/null | grep -qE 'automation-' && echo "openshift" || echo ""
         executable: /bin/bash
-      register: _check_openshift
+      when: _check_containerized.stdout | length == 0
       changed_when: false
       failed_when: false
-      when: _check_containerized.stdout == ""
+      register: _check_openshift
 
     - name: Check for Kubernetes AAP
       ansible.builtin.shell:
@@ -66,10 +63,10 @@
           set -o pipefail
           kubectl get pods -n "{{ aap_namespace }}" 2>/dev/null | grep -qE 'automation-' && echo "kubernetes" || echo ""
         executable: /bin/bash
-      register: _check_kubernetes
+      when: _check_containerized.stdout | length == 0 and (_check_openshift.stdout | default("")) == ""
       changed_when: false
       failed_when: false
-      when: _check_containerized.stdout == "" and (_check_openshift.stdout | default("")) == ""
+      register: _check_kubernetes
 
     - name: Set detected platform
       ansible.builtin.set_fact:
@@ -92,34 +89,28 @@
       - Containerized (podman): {{ _check_containerized.stdout | default('not found') }}
       - OpenShift: {{ _check_openshift.stdout | default('not checked') }}
       - Kubernetes: {{ _check_kubernetes.stdout | default('not checked') }}
-
       Please set aap_platform explicitly to: containerized, openshift, or kubernetes
   when: aap_platform == 'unknown'
-
 # Dispatch to platform-specific discovery
 - name: Run containerized AAP certificate discovery
   ansible.builtin.include_tasks: containerized.yml
   when: aap_platform == 'containerized'
-
 - name: Run OpenShift AAP certificate discovery
   ansible.builtin.include_tasks: openshift.yml
   when: aap_platform == 'openshift'
-
 - name: Run Kubernetes AAP certificate discovery
   ansible.builtin.include_tasks: kubernetes.yml
   when: aap_platform == 'kubernetes'
-
 # Check all discovered certificates using common role
 # Note: include_role sets cert_info for each iteration, we collect it immediately
 - name: Check discovered certificates
   ansible.builtin.include_tasks: check_and_collect.yml
-  vars:
-    _cert_item: "{{ item }}"
   loop: "{{ cert_checks }}"
   loop_control:
     label: "{{ item.name }}"
-
-# Detect AAP CA source for context
+  # Detect AAP CA source for context
+  vars:
+    _cert_item: "{{ item }}"
 - name: Detect if CA is installer-generated
   ansible.builtin.shell:
     cmd: |
@@ -136,11 +127,10 @@
         echo "missing"
       fi
     executable: /bin/bash
-  register: _ca_source
+  when: aap_platform == 'containerized'
   changed_when: false
   failed_when: false
-  when: aap_platform == 'containerized'
-
+  register: _ca_source
 - name: Add CA source context to results
   ansible.builtin.set_fact:
     cert_results: >-
@@ -151,11 +141,11 @@
         }) | list
       }}
   when: _ca_source is defined
-
 # Generate report
 - name: Generate AAP certificate report
   ansible.builtin.include_role:
     name: cert_report
+  when: cert_results | length > 0
   vars:
     cert_report: "{{ cert_results }}"
     warn_days: "{{ cert_warning_days }}"
@@ -164,4 +154,3 @@
     show_paths: "{{ cert_show_paths }}"
     show_chain: "{{ cert_show_chain }}"
     output_json: "{{ cert_output_json }}"
-  when: cert_results | length > 0

@@ -2,15 +2,12 @@
 # Website Remediation Playbook
 # Called by EDA when website monitoring detects a failure
 # Analyzes the failure and either auto-remediates or triggers Nexus workflow
-
 - name: Website Remediation
   hosts: "{{ target_host | default('localhost') }}"
-  gather_facts: true
-
   vars:
-    # Operation mode: analyze, remediate, or trigger_nexus
-    # All other vars (alert_url, alert_status, alert_error, alert_timestamp, alert_source)
-    # are passed via extra_vars and have defaults in role defaults/main.yml
-
+  gather_facts: true
+  # Operation mode: analyze, remediate, or trigger_nexus
+  # All other vars (alert_url, alert_status, alert_error, alert_timestamp, alert_source)
+  # are passed via extra_vars and have defaults in role defaults/main.yml
   roles:
     - role: website_remediation

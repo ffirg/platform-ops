@@ -12,22 +12,22 @@
     cert_info:
       name: "{{ cert_name | default(cert_path | basename) }}"
       path: "{{ cert_path }}"
-      type: "file"
+      type: file
       exists: false
-      status: "missing"
-      days_remaining: null
-      expiry_date: null
-      subject: null
-      issuer: null
-      serial: null
-      key_algorithm: null
-      key_size: null
-      sig_algorithm: null
+      status: missing
+      days_remaining:
+      expiry_date:
+      subject:
+      issuer:
+      serial:
+      key_algorithm:
+      key_size:
+      sig_algorithm:
       san: []
-      chain: null
-      purpose: null
+      chain:
+      purpose:
       service: "{{ cert_service | default(omit) }}"
-      source: null
+      source:
   when: not _cert_stat.stat.exists
 
 - name: Extract certificate information
@@ -36,31 +36,31 @@
     - name: Get certificate info using community.crypto
       community.crypto.x509_certificate_info:
         path: "{{ cert_path }}"
-      register: _cert_info
       failed_when: false
+      register: _cert_info
 
     - name: Handle certificate read error
-      when: _cert_info.not_after is not defined
       ansible.builtin.set_fact:
         cert_info:
           name: "{{ cert_name | default(cert_path | basename) }}"
           path: "{{ cert_path }}"
-          type: "file"
+          type: file
           exists: true
-          status: "error"
-          days_remaining: null
-          expiry_date: null
-          subject: null
-          issuer: null
-          serial: null
-          key_algorithm: null
-          key_size: null
-          sig_algorithm: null
+          status: error
+          days_remaining:
+          expiry_date:
+          subject:
+          issuer:
+          serial:
+          key_algorithm:
+          key_size:
+          sig_algorithm:
           san: []
-          chain: null
-          purpose: null
+          chain:
+          purpose:
           service: "{{ cert_service | default(omit) }}"
-          source: null
+          source:
+      when: _cert_info.not_after is not defined
 
     - name: Process valid certificate
       when: _cert_info.not_after is defined
@@ -80,20 +80,20 @@
               }}
 
         - name: Format subject string
+          ansible.builtin.set_fact:
+            _subject_str: >-
+              {{ _cn }}{{ ', O=' + _org if _org else '' }}{{ ', C=' + _country if _country else '' }}
           vars:
             _cn: "{{ _cert_info.subject.commonName | default('') }}"
             _org: "{{ _cert_info.subject.organizationName | default('') }}"
             _country: "{{ _cert_info.subject.countryName | default('') }}"
-          ansible.builtin.set_fact:
-            _subject_str: >-
-              {{ _cn }}{{ ', O=' + _org if _org else '' }}{{ ', C=' + _country if _country else '' }}
 
         - name: Format issuer string
+          ansible.builtin.set_fact:
+            _issuer_str: "{{ _cn }}{{ ', O=' + _org if _org else '' }}"
           vars:
             _cn: "{{ _cert_info.issuer.commonName | default('') }}"
             _org: "{{ _cert_info.issuer.organizationName | default('') }}"
-          ansible.builtin.set_fact:
-            _issuer_str: "{{ _cn }}{{ ', O=' + _org if _org else '' }}"
 
         - name: Check if self-signed
           ansible.builtin.set_fact:
@@ -123,15 +123,15 @@
                 9090 if cert_service == 'cockpit' else
                 0
               }}
-          when: cert_service is defined and cert_service != ''
+          when: cert_service is defined and cert_service | length > 0
 
         - name: Get live service certificate for comparison
           community.crypto.get_certificate:
             host: localhost
             port: "{{ _service_port | int }}"
-          register: _live_cert
-          failed_when: false
           when: _service_port is defined and _service_port | int > 0
+          failed_when: false
+          register: _live_cert
 
         - name: Compare file and live certificates
           ansible.builtin.set_fact:
@@ -144,24 +144,24 @@
 
         - name: Set service not verified
           ansible.builtin.set_fact:
-            _service_match: null
+            _service_match:
             _service_verified: false
           when: _service_match is not defined
 
         - name: Determine certificate purpose
-          vars:
-            _eku: "{{ (_cert_info.extended_key_usage | default([], true)) | join(',') }}"
           ansible.builtin.set_fact:
             _cert_purpose: >-
               {{ 'TLS Server' if 'serverAuth' in _eku else
                  'TLS Client' if 'clientAuth' in _eku else 'General' }}
+          vars:
+            _eku: "{{ (_cert_info.extended_key_usage | default([], true)) | join(',') }}"
 
         - name: Build cert_info fact
           ansible.builtin.set_fact:
             cert_info:
               name: "{{ cert_name | default(cert_path | basename) }}"
               path: "{{ cert_path }}"
-              type: "file"
+              type: file
               exists: true
               status: "{{ _cert_status }}"
               days_remaining: "{{ _days_remaining | int }}"

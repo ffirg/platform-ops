@@ -14,19 +14,19 @@
         Operation: {{ remediation_operation }}
 
 - name: Run analysis
-  when: remediation_operation == "analyze"
   ansible.builtin.include_tasks: analyze.yml
+  when: remediation_operation == "analyze"
 
 - name: Run remediation
-  when: remediation_operation == "remediate"
   ansible.builtin.include_tasks: remediate.yml
+  when: remediation_operation == "remediate"
 
 - name: Trigger Nexus workflow
   when: nexus_workflow_id is defined and nexus_workflow_id | string | length > 0
   block:
     - name: Call Nexus workflow API
       ansible.builtin.uri:
-        url: "http://{{ nexus_host }}:{{ nexus_port }}/api/v1/executions"
+        url: http://{{ nexus_host }}:{{ nexus_port }}/api/v1/executions
         method: POST
         body_format: json
         body:
@@ -44,8 +44,8 @@
       ansible.builtin.set_fact:
         nexus_result:
           execution_id: "{{ nexus_response.json.id | default('unknown') }}"
-          status: "triggered"
-          message: "Nexus workflow triggered successfully"
+          status: triggered
+          message: Nexus workflow triggered successfully
 
 - name: Output results via set_stats
   ansible.builtin.set_stats:

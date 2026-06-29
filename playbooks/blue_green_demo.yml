@@ -17,16 +17,13 @@
 #   ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=switch bg_environment=blue"
 #   ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=status"
 #   ansible-playbook playbooks/blue_green_demo.yml -e "bg_operation=cleanup"
-
 - name: Blue-Green Deployment Demo
   hosts: all:!localhost
-  gather_facts: true
-
   vars:
     # Default values - override via extra_vars
     bg_operation: status
     bg_environment: blue
-    bg_version: "v1.0.0"
-
+    bg_version: v1.0.0
+  gather_facts: true
   roles:
     - role: blue_green_demo
