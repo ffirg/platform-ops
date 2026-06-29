@@ -1,7 +1,6 @@
 ---
 # roles/check_server_certs/defaults/main.yml
 # Defaults for generic server certificate checking
-
 # User-provided checks (explicit mode)
 # Format:
 #   - name: "Display name"
@@ -10,21 +9,17 @@
 #     host: "hostname"           # for remote type
 #     port: 443                  # for remote type
 cert_checks: []
-
 # Auto-discovery settings
 cert_auto_discover: "{{ cert_checks | length == 0 }}"
 cert_discover_files: true
-
 # Thresholds
 cert_warning_days: 30
 cert_critical_days: 14
-
 # Output
 cert_output_json: true
 cert_report_file: ""
 cert_show_paths: false
 cert_show_chain: true
-
 # Fail conditions (all false by default - report issues but don't fail the playbook)
 cert_fail_on_expired: false
 cert_fail_on_critical: false

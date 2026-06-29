@@ -5,8 +5,8 @@
 - name: Initialize discovered certificates list
   ansible.builtin.set_fact:
     _discovered_certs: []
-
 # File-based discovery
+
 - name: Discover certificate files
   when: cert_discover_files | bool
   block:
@@ -29,9 +29,9 @@
             ls $pattern 2>/dev/null || true
           done | sort -u | head -50
         executable: /bin/bash
-      register: _found_certs
       changed_when: false
       failed_when: false
+      register: _found_certs
 
     - name: Filter to actual certificate files (not CA bundles)
       ansible.builtin.shell:
@@ -46,11 +46,11 @@
             echo "{{ item }}"
           fi
         executable: /bin/bash
-      loop: "{{ _found_certs.stdout_lines | default([]) }}"
-      register: _valid_certs_raw
+      when: _found_certs.stdout_lines | length > 0
       changed_when: false
       failed_when: false
-      when: _found_certs.stdout_lines | length > 0
+      loop: "{{ _found_certs.stdout_lines | default([]) }}"
+      register: _valid_certs_raw
 
     - name: Collect valid certificate paths
       ansible.builtin.set_fact:
@@ -64,7 +64,6 @@
           set -o pipefail
           cert_path="{{ item }}"
           service=""
-
           # Check nginx config
           if grep -rq "$cert_path" /etc/nginx/ 2>/dev/null; then
             service="nginx"
@@ -81,13 +80,12 @@
           elif grep -rq "$cert_path" /etc/dovecot/ 2>/dev/null; then
             service="dovecot"
           fi
-
           echo "$service"
         executable: /bin/bash
-      loop: "{{ _valid_certs.stdout_lines | default([]) }}"
-      register: _cert_services
       changed_when: false
       failed_when: false
+      loop: "{{ _valid_certs.stdout_lines | default([]) }}"
+      register: _cert_services
 
     - name: Build discovered file certificates list
       ansible.builtin.set_fact:
@@ -100,13 +98,12 @@
               'service': item.1.stdout | default('')
             }]
           }}
-      loop: "{{ (_valid_certs.stdout_lines | default([])) | zip(_cert_services.results | default([])) | list }}"
       when: _valid_certs.stdout_lines is defined
+      loop: "{{ (_valid_certs.stdout_lines | default([])) | zip(_cert_services.results | default([])) | list }}"
 
 - name: Display discovered certificates
   ansible.builtin.debug:
-    msg: "Discovered {{ _discovered_certs | length }} certificates to check"
-
+    msg: Discovered {{ _discovered_certs | length }} certificates to check
 - name: Set cert_checks from discovery
   ansible.builtin.set_fact:
     cert_checks: "{{ _discovered_certs }}"

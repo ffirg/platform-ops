@@ -7,20 +7,17 @@
 #   -e cert_scenario=critical  # Expires within 14 days
 #   -e cert_scenario=warning   # Expires within 30 days
 #   -e cert_scenario=ok        # Expires in 90 days
-
 - name: Create test certificate with specified expiry condition
   hosts: all
   become: true
-
   vars:
-    cert_scenario: expired  # expired, critical, warning, ok
+    cert_scenario: expired # expired, critical, warning, ok
     # Days from now for each scenario
     scenario_days:
-      expired: -5      # 5 days ago
-      critical: 10     # 10 days (within 14-day critical threshold)
-      warning: 20      # 20 days (within 30-day warning threshold)
-      ok: 90           # 90 days (healthy)
-
+      expired: -5 # 5 days ago
+      critical: 10 # 10 days (within 14-day critical threshold)
+      warning: 20 # 20 days (within 30-day warning threshold)
+      ok: 90 # 90 days (healthy)
   tasks:
     - name: Validate scenario
       ansible.builtin.assert:
@@ -38,36 +35,36 @@
       ansible.builtin.file:
         path: /etc/nginx/ssl/ca
         state: directory
-        mode: '0700'
+        mode: "0700"
 
     - name: Generate CA private key
       community.crypto.openssl_privatekey:
         path: /etc/nginx/ssl/ca/ca.key
         size: 2048
-        mode: '0600'
+        mode: "0600"
 
     - name: Generate CA certificate
       community.crypto.x509_certificate:
         path: /etc/nginx/ssl/ca/ca.crt
         privatekey_path: /etc/nginx/ssl/ca/ca.key
         provider: selfsigned
-        selfsigned_not_after: "+365d"
+        selfsigned_not_after: +365d
         subject:
-          commonName: "Test CA"
+          commonName: Test CA
         basic_constraints:
-          - "CA:TRUE"
+          - CA:TRUE
         basic_constraints_critical: true
         key_usage:
           - keyCertSign
           - cRLSign
         key_usage_critical: true
-        mode: '0644'
+        mode: "0644"
 
     - name: Generate server private key
       community.crypto.openssl_privatekey:
         path: /etc/nginx/ssl/server.key
         size: 2048
-        mode: '0600'
+        mode: "0600"
         force: true
 
     - name: Generate server CSR
@@ -76,20 +73,20 @@
         privatekey_path: /etc/nginx/ssl/server.key
         subject:
           commonName: "{{ ansible_fqdn }}"
-          organizationName: "Test-{{ cert_scenario | capitalize }}"
-          countryName: "GB"
+          organizationName: Test-{{ cert_scenario | capitalize }}
+          countryName: GB
         key_usage:
           - digitalSignature
           - keyEncipherment
         key_usage_critical: true
         extended_key_usage:
           - serverAuth
-        mode: '0644'
+        mode: "0644"
 
     - name: Calculate certificate validity period
       ansible.builtin.set_fact:
         _days: "{{ scenario_days[cert_scenario] | int }}"
-        _not_before: "-1d"
+        _not_before: -1d
         _not_after: "{{ '%+dd' | format(scenario_days[cert_scenario] | int) }}"
 
     - name: Sign server certificate with CA
@@ -101,13 +98,14 @@
         ownca_privatekey_path: /etc/nginx/ssl/ca/ca.key
         ownca_not_before: "{{ _not_before }}"
         ownca_not_after: "{{ _not_after }}"
-        mode: '0644'
+        mode: "0644"
         force: true
 
     - name: Clean up CSR
       ansible.builtin.file:
         path: /etc/nginx/ssl/server.csr
         state: absent
+        mode: "0644"
 
     - name: Verify certificate
       community.crypto.x509_certificate_info:

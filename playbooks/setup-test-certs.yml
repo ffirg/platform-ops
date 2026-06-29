@@ -1,20 +1,18 @@
 ---
 # playbooks/setup-test-certs.yml
 # Install nginx with self-signed cert and cockpit for certificate testing
-
 - name: Setup test certificates
   hosts: all
   become: true
-
   tasks:
     - name: Enable required repos
       ansible.builtin.command:
         cmd: subscription-manager repos --enable={{ item }}
+      changed_when: false
+      failed_when: false
       loop:
         - rhel-9-for-x86_64-baseos-rpms
         - rhel-9-for-x86_64-appstream-rpms
-      failed_when: false
-      changed_when: false
 
     - name: Install nginx and cockpit
       ansible.builtin.dnf:
@@ -28,38 +26,36 @@
       ansible.builtin.file:
         path: /etc/nginx/ssl
         state: directory
-        mode: '0755'
+        mode: "0755"
 
     - name: Generate private key for nginx
       community.crypto.openssl_privatekey:
         path: /etc/nginx/ssl/server.key
         size: 2048
-        mode: '0600'
+        mode: "0600"
 
     - name: Generate self-signed certificate for nginx
       community.crypto.x509_certificate:
         path: /etc/nginx/ssl/server.crt
         privatekey_path: /etc/nginx/ssl/server.key
         provider: selfsigned
-        selfsigned_not_after: "+365d"
+        selfsigned_not_after: +365d
         subject:
           commonName: "{{ ansible_fqdn }}"
-          organizationName: "Test"
-          countryName: "GB"
-        mode: '0644'
+          organizationName: Test
+          countryName: GB
+        mode: "0644"
 
     - name: Configure nginx for HTTPS
       ansible.builtin.copy:
         dest: /etc/nginx/conf.d/ssl.conf
-        mode: '0644'
+        mode: "0644"
         content: |
           server {
               listen 443 ssl;
               server_name {{ ansible_fqdn }};
-
               ssl_certificate /etc/nginx/ssl/server.crt;
               ssl_certificate_key /etc/nginx/ssl/server.key;
-
               location / {
                   root /usr/share/nginx/html;
                   index index.html;
