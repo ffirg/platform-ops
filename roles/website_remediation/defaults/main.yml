@@ -1,32 +1,27 @@
 ---
 # Website Remediation Role Defaults
-
 # Alert details (passed from EDA)
 alert_url: ""
-alert_status: "down"
-alert_error: "unknown"
+alert_status: down
+alert_error: unknown
 alert_timestamp: ""
-alert_source: "manual"
-
+alert_source: manual
 # Operation mode
-remediation_operation: "analyze"  # analyze, remediate, escalate
-
+remediation_operation: analyze # analyze, remediate, escalate
 # Nexus workflow integration
-nexus_host: "localhost"
+nexus_host: localhost
 nexus_port: 8080
 # nexus_workflow_id: ""  # Uncomment and set to trigger Nexus workflow
-
 # Remediation settings
 max_retry_attempts: 3
 retry_delay_seconds: 10
-
 # Known remediation actions
 remediation_actions:
-  dns_failure: "check_dns"
-  ssl_error: "check_ssl"
-  connection_timeout: "restart_service"
-  connection_refused: "restart_service"
-  http_500: "restart_service"
-  http_502: "check_upstream"
-  http_503: "check_capacity"
-  unknown: "escalate"
+  dns_failure: check_dns
+  ssl_error: check_ssl
+  connection_timeout: restart_service
+  connection_refused: restart_service
+  http_500: restart_service
+  http_502: check_upstream
+  http_503: check_capacity
+  unknown: escalate

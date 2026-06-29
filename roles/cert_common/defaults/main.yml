@@ -1,7 +1,6 @@
 ---
 # roles/cert_common/defaults/main.yml
 # Shared defaults for all certificate checking roles
-
 # OS-aware CA bundle path (use ansible_os_family fact)
 # RedHat: /etc/pki/tls/certs/ca-bundle.crt
 # Debian: /etc/ssl/certs/ca-certificates.crt
@@ -13,22 +12,18 @@ cert_ca_bundle_path: >-
     '/etc/ssl/cert.pem' if ansible_os_family == 'Darwin' else
     '/etc/ssl/certs/ca-certificates.crt'
   }}
-
 # Thresholds
 cert_warning_days: 30
 cert_critical_days: 14
-
 # Output options
 cert_show_paths: false
 cert_show_chain: true
 cert_output_json: true
 cert_report_file: ""
-
 # Fail conditions
 cert_fail_on_expired: true
 cert_fail_on_critical: false
 cert_fail_on_warning: false
-
 # Discovery paths (for auto-discovery mode)
 cert_discovery_paths:
   - /etc/ssl/certs/*.crt
@@ -42,13 +37,12 @@ cert_discovery_paths:
   - /etc/letsencrypt/live/*/*.pem
   - /opt/*/ssl/*.crt
   - /opt/*/tls/*.crt
-
 # Common TLS ports to check for remote discovery
 cert_common_tls_ports:
   - 443
   - 8443
-  - 636    # LDAPS
-  - 993    # IMAPS
-  - 995    # POP3S
-  - 5432   # PostgreSQL SSL
-  - 6379   # Redis TLS
+  - 636 # LDAPS
+  - 993 # IMAPS
+  - 995 # POP3S
+  - 5432 # PostgreSQL SSL
+  - 6379 # Redis TLS

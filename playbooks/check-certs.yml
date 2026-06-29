@@ -29,11 +29,8 @@
 #     - lists.expiring[]      Pre-filtered warning/critical certs
 #     - lists.expired[]       Pre-filtered expired certs
 #     - lists.problems[]      Pre-filtered missing/error certs
-
 - name: Check Server Certificates
   hosts: all
-  gather_facts: true
-
   vars:
     # Override these as needed
     cert_warning_days: 30
@@ -42,9 +39,8 @@
     cert_show_chain: true
     cert_output_json: true
     cert_report_file: ""
-
     # Explicit checks (empty = auto-discover)
     cert_checks: []
-
+  gather_facts: true
   roles:
     - role: check_server_certs

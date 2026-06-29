@@ -11,21 +11,21 @@
   ansible.builtin.shell:
     cmd: |
       set -o pipefail
-      podman ps --format '{{ '{{' }}.Names{{ '}}' }}' 2>/dev/null | \
+      podman ps --format '{{ '{{' }}.Names{{ ' }}' }}' 2>/dev/null | \
         grep -E '^(automation-|postgresql|redis|receptor|ansiblemcp)' | \
         sort -u
     executable: /bin/bash
-  register: _running_containers
   changed_when: false
   failed_when: false
+  register: _running_containers
 
 - name: Display discovered containers
   ansible.builtin.debug:
     msg: "Discovered {{ _running_containers.stdout_lines | length }} AAP containers: {{ _running_containers.stdout_lines | join(', ') }}"
-
 # Map discovered containers to certificate paths
 # Note: gateway-proxy uses the same gateway.cert (mounted as gateway.crt inside the Envoy container)
 # so we skip gateway-proxy containers to avoid duplicate checks
+
 - name: Map containers to certificates
   ansible.builtin.set_fact:
     cert_checks: >-
@@ -74,12 +74,12 @@
           )
         }]
       }}
-  loop: "{{ _running_containers.stdout_lines }}"
   when:
     - item != ''
     - "'gateway-proxy' not in item"
+  # Add infrastructure certificates (not tied to containers)
+  loop: "{{ _running_containers.stdout_lines }}"
 
-# Add infrastructure certificates (not tied to containers)
 - name: Add infrastructure certificates
   ansible.builtin.set_fact:
     cert_checks: >-
@@ -90,12 +90,12 @@
           {'name': 'Gateway Redis Client', 'path': aap_base + '/gateway/etc/redis.cert', 'type': 'file', 'service': 'aap-gateway'}
         ]
       }}
-
 # Remove duplicates and empty paths
+
 - name: Filter valid certificates
   ansible.builtin.set_fact:
     cert_checks: "{{ cert_checks | selectattr('path', 'ne', '') | list | unique(attribute='path') }}"
 
 - name: Display certificates to check
   ansible.builtin.debug:
-    msg: "Will check {{ cert_checks | length }} AAP certificates"
+    msg: Will check {{ cert_checks | length }} AAP certificates

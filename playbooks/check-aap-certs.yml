@@ -21,21 +21,16 @@
 #   -e "aap_platform=containerized"       # Platform: auto, containerized, openshift, kubernetes
 #   -e "cert_report_file=/tmp/report.md"  # Save markdown report
 #   -e "create_aap_inventory=false"       # Skip AAP inventory creation
-
 # =============================================================================
 # Play 1: Discover AAP nodes and create inventory
 # =============================================================================
 - name: Discover AAP Infrastructure
   hosts: localhost
-  connection: local
-  gather_facts: true
-
   vars:
     # Keychain lookups (macOS only, fail gracefully elsewhere)
     _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null || true', errors='ignore') }}"
     _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null || true', errors='ignore') }}"
     _keychain_pass: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-password -w 2>/dev/null || true', errors='ignore') }}"
-
     # Credential resolution chain: keychain → env → extra vars
     # Supports both AAP_HOST (custom) and AAP_HOSTNAME (built-in Red Hat AAP credential type)
     gateway_hostname: >-
@@ -52,53 +47,43 @@
          default(lookup('env', 'AAP_PASSWORD'), true) |
          default(aap_password | default(''), true) }}
     gateway_validate_certs: false
-
     # Inventory creation options
     create_aap_inventory: true
-    aap_inventory_name: "AAP Infrastructure"
-    aap_organization: "Default"
-
+    aap_inventory_name: AAP Infrastructure
+    aap_organization: Default
     # Default platform for discovered hosts
     aap_platform: containerized
-
     # Certificate check thresholds
     cert_warning_days: 30
     cert_critical_days: 14
-
+  connection: local
+  gather_facts: true
   roles:
     - role: discover_aap_nodes
-
 # =============================================================================
 # Play 2: Check certificates on discovered AAP hosts
 # =============================================================================
 - name: Check AAP Certificates
   hosts: aap_discovered
-  gather_facts: true
-
   vars:
     # Platform: auto, containerized, openshift, kubernetes
     aap_platform: "{{ hostvars[inventory_hostname].aap_platform | default('auto') }}"
-
     # Thresholds (inherited from discovery or use defaults)
     cert_warning_days: "{{ hostvars[inventory_hostname].cert_warning_days | default(30) }}"
     cert_critical_days: "{{ hostvars[inventory_hostname].cert_critical_days | default(14) }}"
-
     # Output options
     cert_show_paths: false
     cert_show_chain: true
     cert_output_json: true
     cert_report_file: ""
-
     # Fail conditions
     cert_fail_on_expired: true
     cert_fail_on_critical: false
     cert_fail_on_warning: false
-
     # Containerized AAP base path
     aap_base: "{{ ansible_env.HOME }}/aap"
-
     # OpenShift/Kubernetes namespace
-    aap_namespace: "aap"
-
+    aap_namespace: aap
+  gather_facts: true
   roles:
     - role: check_aap_certs

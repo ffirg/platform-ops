@@ -7,7 +7,7 @@
 
 - name: Check if auto-remediation is possible
   ansible.builtin.fail:
-    msg: "Cannot auto-remediate {{ failure_classification }} - requires escalation"
+    msg: Cannot auto-remediate {{ failure_classification }} - requires escalation
   when: not can_auto_remediate | bool
 
 - name: Restart service remediation
@@ -18,10 +18,11 @@
         is_blue_green: "{{ 'blue-green' in service_name }}"
 
     - name: Restart blue-green container
-      when: is_blue_green
       ansible.builtin.command:
         cmd: >
           podman restart {{ 'blue' if 'blue' in service_name else 'green' }}-demo
+      when: is_blue_green
+      changed_when: false
       register: restart_result
       ignore_errors: true
 
@@ -36,6 +37,6 @@
     - name: Set remediation outcome
       ansible.builtin.set_fact:
         remediation_outcome:
-          action_taken: "restart_service"
+          action_taken: restart_service
           success: "{{ wait_result is not failed }}"
           message: "{{ 'Service restarted successfully' if wait_result is not failed else 'Service restart failed' }}"

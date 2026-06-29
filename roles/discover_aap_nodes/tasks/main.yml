@@ -21,7 +21,7 @@
 
 - name: Create OAuth token for API access
   ansible.platform.token:
-    description: "Certificate discovery - {{ ansible_facts.date_time.iso8601 | default('auto') }}"
+    description: Certificate discovery - {{ ansible_facts.date_time.iso8601 | default('auto') }}
     scope: write
     state: present
     gateway_hostname: "{{ gateway_hostname }}"
@@ -41,20 +41,20 @@
   block:
     - name: Query service types from Gateway API
       ansible.builtin.uri:
-        url: "https://{{ gateway_hostname }}/api/gateway/v1/service_types/"
+        url: https://{{ gateway_hostname }}/api/gateway/v1/service_types/
         method: GET
         headers:
-          Authorization: "Bearer {{ _oauth_token }}"
+          Authorization: Bearer {{ _oauth_token }}
         validate_certs: "{{ gateway_validate_certs }}"
         return_content: true
       register: _service_types_response
 
     - name: Query service nodes from Gateway API
       ansible.builtin.uri:
-        url: "https://{{ gateway_hostname }}/api/gateway/v1/service_nodes/"
+        url: https://{{ gateway_hostname }}/api/gateway/v1/service_nodes/
         method: GET
         headers:
-          Authorization: "Bearer {{ _oauth_token }}"
+          Authorization: Bearer {{ _oauth_token }}
         validate_certs: "{{ gateway_validate_certs }}"
         return_content: true
       register: _service_nodes_response
@@ -97,14 +97,13 @@
           ══════════════════════════════════════════════════════════════
           Gateway: {{ gateway_hostname }}
           Service Types: {{ _service_types | map(attribute='name') | list | join(', ') }}
-
           Discovered Nodes:
           {% for host in _discovered_nodes %}
             - {{ host }} → {{ _host_services[host] | join(', ') }}
           {% endfor %}
           ══════════════════════════════════════════════════════════════
-
     # Create/update inventory in AAP Controller
+
     - name: Create AAP inventory in Controller
       when: create_aap_inventory | bool
       block:
@@ -112,38 +111,38 @@
           ansible.controller.inventory:
             name: "{{ aap_inventory_name }}"
             organization: "{{ aap_organization }}"
-            description: "Dynamically discovered AAP infrastructure nodes"
+            description: Dynamically discovered AAP infrastructure nodes
             state: present
-            aap_hostname: "https://{{ gateway_hostname }}"
+            aap_hostname: https://{{ gateway_hostname }}
             aap_token: "{{ _oauth_token }}"
             validate_certs: "{{ gateway_validate_certs }}"
             request_timeout: 30
 
         - name: Create service type groups
           ansible.controller.group:
-            name: "aap_{{ item.name }}"
+            name: aap_{{ item.name }}
             inventory: "{{ aap_inventory_name }}"
-            description: "AAP {{ item.name | title }} nodes"
+            description: AAP {{ item.name | title }} nodes
             state: present
-            aap_hostname: "https://{{ gateway_hostname }}"
+            aap_hostname: https://{{ gateway_hostname }}
             aap_token: "{{ _oauth_token }}"
             validate_certs: "{{ gateway_validate_certs }}"
             request_timeout: 30
           loop: "{{ _service_types }}"
           loop_control:
-            label: "aap_{{ item.name }}"
+            label: aap_{{ item.name }}
 
         - name: Add discovered hosts to inventory
           ansible.controller.host:
             name: "{{ item }}"
             inventory: "{{ aap_inventory_name }}"
-            description: "AAP node - {{ _host_services[item] | join(', ') }}"
+            description: AAP node - {{ _host_services[item] | join(', ') }}
             variables:
               ansible_host: "{{ item }}"
               aap_services: "{{ _host_services[item] }}"
               aap_platform: "{{ aap_platform }}"
             state: present
-            aap_hostname: "https://{{ gateway_hostname }}"
+            aap_hostname: https://{{ gateway_hostname }}
             aap_token: "{{ _oauth_token }}"
             validate_certs: "{{ gateway_validate_certs }}"
             request_timeout: 30
@@ -153,24 +152,23 @@
 
         - name: Add hosts to service groups
           ansible.controller.group:
-            name: "aap_{{ item.1 }}"
+            name: aap_{{ item.1 }}
             inventory: "{{ aap_inventory_name }}"
             hosts:
               - "{{ item.0 }}"
             state: present
-            aap_hostname: "https://{{ gateway_hostname }}"
+            aap_hostname: https://{{ gateway_hostname }}
             aap_token: "{{ _oauth_token }}"
             validate_certs: "{{ gateway_validate_certs }}"
             request_timeout: 30
+          when: item.1 in _host_services[item.0]
           loop: "{{ _discovered_nodes | product(_service_types | map(attribute='name') | list) | list }}"
           loop_control:
             label: "{{ item.0 }} → aap_{{ item.1 }}"
-          when: item.1 in _host_services[item.0]
 
         - name: Report inventory creation
           ansible.builtin.debug:
-            msg: "Created/updated inventory '{{ aap_inventory_name }}' with {{ _discovered_nodes | length }} hosts"
-
+            msg: Created/updated inventory '{{ aap_inventory_name }}' with {{ _discovered_nodes | length }} hosts
     # Add hosts to runtime inventory for immediate use in subsequent plays
     - name: Add discovered hosts to runtime inventory
       ansible.builtin.add_host:
@@ -187,22 +185,20 @@
       loop: "{{ _discovered_nodes }}"
       loop_control:
         label: "{{ item }}"
-
     - name: Set discovery results for calling playbooks
       ansible.builtin.set_fact:
         discovered_aap_nodes: "{{ _discovered_nodes }}"
         discovered_aap_services: "{{ _service_types | map(attribute='name') | list }}"
         discovered_host_services: "{{ _host_services }}"
-
   always:
     - name: Delete OAuth token
       ansible.builtin.uri:
-        url: "https://{{ gateway_hostname }}/api/gateway/v1/tokens/{{ _oauth_token_obj.id }}/"
+        url: https://{{ gateway_hostname }}/api/gateway/v1/tokens/{{ _oauth_token_obj.id }}/
         method: DELETE
         headers:
-          Authorization: "Bearer {{ _oauth_token }}"
+          Authorization: Bearer {{ _oauth_token }}
         validate_certs: "{{ gateway_validate_certs }}"
         status_code: [202, 204]
       when: _oauth_token_obj is defined and _oauth_token is defined
+      failed_when: false
       no_log: true
-      ignore_errors: true

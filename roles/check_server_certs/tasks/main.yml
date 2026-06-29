@@ -1,27 +1,24 @@
 ---
 # roles/check_server_certs/tasks/main.yml
 # Orchestrate certificate checking - explicit or auto-discovery
-
 # Preflight check for required Python library
+
 - name: Check for python3-cryptography library
   ansible.builtin.command:
     cmd: "{{ ansible_python_interpreter | default('/usr/bin/python3') }} -c 'import cryptography; print(cryptography.__version__)'"
-  register: _crypto_check
   changed_when: false
   failed_when: false
+  register: _crypto_check
 
 - name: Fail if cryptography library is missing
   ansible.builtin.fail:
     msg: |
       PREFLIGHT CHECK FAILED: python3-cryptography is not installed on {{ inventory_hostname }}
-
       The community.crypto modules require the cryptography Python library (>= 3.3).
-
       To fix, run on the target host:
         RHEL/CentOS/Fedora: dnf install python3-cryptography
         Debian/Ubuntu:      apt install python3-cryptography
         pip:                pip3 install cryptography
-
       Detected Python: {{ ansible_python_interpreter | default('/usr/bin/python3') }}
   when: _crypto_check.rc != 0
 
@@ -38,28 +35,28 @@
 - name: Initialize certificate results
   ansible.builtin.set_fact:
     cert_results: []
-
 # Auto-discovery if no explicit checks provided
+
 - name: Run certificate auto-discovery
   ansible.builtin.include_tasks: discover.yml
   when: cert_auto_discover | bool
 
 - name: Display certificates to check
   ansible.builtin.debug:
-    msg: "Checking {{ cert_checks | length }} certificates"
-
+    msg: Checking {{ cert_checks | length }} certificates
 # Process each certificate check
+
 - name: Check file-based certificates
   ansible.builtin.include_role:
     name: check_cert_file
-  vars:
-    cert_path: "{{ item.path }}"
-    cert_name: "{{ item.name }}"
-    cert_service: "{{ item.service | default('') }}"
   loop: "{{ cert_checks | selectattr('type', 'eq', 'file') | list }}"
   loop_control:
     label: "{{ item.name }}"
   register: _file_checks
+  vars:
+    cert_path: "{{ item.path }}"
+    cert_name: "{{ item.name }}"
+    cert_service: "{{ item.service | default('') }}"
 
 - name: Collect file certificate results
   ansible.builtin.set_fact:
@@ -68,11 +65,12 @@
   loop: "{{ cert_checks | selectattr('type', 'eq', 'file') | list }}"
   loop_control:
     label: "{{ item.name }}"
-
 # Generate report
+
 - name: Generate certificate report
   ansible.builtin.include_role:
     name: cert_report
+  when: cert_results | length > 0
   vars:
     cert_report: "{{ cert_results }}"
     warn_days: "{{ cert_warning_days }}"
@@ -81,4 +79,3 @@
     show_paths: "{{ cert_show_paths }}"
     show_chain: "{{ cert_show_chain }}"
     output_json: "{{ cert_output_json }}"
-  when: cert_results | length > 0
