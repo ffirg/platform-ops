@@ -27,10 +27,16 @@
 # =============================================================================
 - name: Discover AAP Infrastructure
   hosts: localhost
-  connection: local
+  # Use ansible.platform.http connection to bypass Manager subprocess failure
+  # in AAP container runtime. The Manager subprocess dies with exitcode 1 when
+  # using connection: local due to container runtime restrictions.
+  connection: ansible.platform.http
   gather_facts: true
 
   vars:
+    # Force DirectHTTPClient mode (no Manager subprocess)
+    ansible_platform_persistent: false
+
     # Keychain lookups (macOS only, fail gracefully elsewhere)
     _keychain_host: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-hostname -w 2>/dev/null || true', errors='ignore') }}"
     _keychain_user: "{{ lookup('pipe', 'security find-generic-password -s aap-credentials -a aap-username -w 2>/dev/null || true', errors='ignore') }}"
