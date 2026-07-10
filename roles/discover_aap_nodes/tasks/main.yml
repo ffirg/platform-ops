@@ -20,21 +20,27 @@
   no_log: true
 
 - name: Create OAuth token for API access
-  ansible.platform.token:
-    description: "Certificate discovery - {{ ansible_facts.date_time.iso8601 | default('auto') }}"
-    scope: write
-    state: present
-    gateway_hostname: "{{ gateway_hostname }}"
-    gateway_username: "{{ gateway_username }}"
-    gateway_password: "{{ gateway_password }}"
-    gateway_validate_certs: "{{ gateway_validate_certs }}"
+  # Use ansible.builtin.uri instead of ansible.platform.token to avoid
+  # Manager subprocess failure in AAP container runtime
+  ansible.builtin.uri:
+    url: "https://{{ gateway_hostname }}/api/gateway/v1/tokens/"
+    method: POST
+    body_format: json
+    body:
+      description: "Certificate discovery - {{ ansible_facts.date_time.iso8601 | default('auto') }}"
+      scope: write
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs }}"
+    status_code: [200, 201]
   register: _token_result
   no_log: true
 
 - name: Store OAuth token for later use
   ansible.builtin.set_fact:
-    _oauth_token: "{{ _token_result.token | default(aap_token.token) }}"
-    _oauth_token_obj: "{{ _token_result | default(aap_token) }}"
+    _oauth_token: "{{ _token_result.json.token }}"
+    _oauth_token_obj: "{{ _token_result.json }}"
   no_log: true
 
 - name: Discover AAP infrastructure
