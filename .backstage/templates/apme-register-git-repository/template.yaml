@@ -39,6 +39,11 @@ spec:
           type: string
           description: Backstage owner entity ref (e.g. group:default/my-team)
           default: user:guest
+        githubToken:
+          title: GitHub Token
+          type: string
+          description: Personal access token with repo scope (required if GitHub OAuth not configured)
+          ui:widget: password
 
   steps:
     - id: fetch-base
@@ -66,7 +71,7 @@ spec:
           so teams can run Ansible content quality scans and remediation from the Quality tab.
 
           After merge, import or refresh the catalog entity, then open **Quality → Register and scan**.
-        token: ${{ secrets.USER_OAUTH_TOKEN }}
+        token: ${{ parameters.githubToken or secrets.USER_OAUTH_TOKEN }}
 
     - id: register
       name: Register in catalog
