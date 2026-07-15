@@ -1,0 +1,12 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: platform-ops
+  description: Platform operations Ansible content for AAP demos
+  annotations:
+    github.com/project-slug: ffirg/platform-ops
+    backstage.io/source-location: url:https://github.com/ffirg/platform-ops
+spec:
+  type: ansible-content
+  lifecycle: production
+  owner: user:default/admin
